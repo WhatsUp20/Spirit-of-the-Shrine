@@ -29,7 +29,7 @@ private val ENEMY_SPECS = mapOf(
     EnemyType.SLIME to EnemySpec(
         patrolSpeed = 0.8f, chaseSpeed = 1.6f,
         detectRadius = 4f, attackRadius = 0.65f, loseRadius = 6f,
-        attackCooldown = 1.2f, contactDamage = 1, maxHealth = 2,
+        attackCooldown = 1.2f, contactDamage = 1, maxHealth = 3,
     ),
     EnemyType.SPIRIT to EnemySpec(
         patrolSpeed = 1.0f, chaseSpeed = 2.0f,
@@ -55,6 +55,8 @@ class GameEngine(private val tileMap: TileMap) {
 
     /** dx/dy are the joystick's normalized input, each in [-1, 1]. */
     fun update(dt: Float, dx: Float, dy: Float, attackPressed: Boolean) {
+        if (player.isDead) return // freeze the world in place behind the death screen
+
         if (attackPressed) player.tryStartAttack()
         player.tickCombatTimers(dt)
 

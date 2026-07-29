@@ -5,11 +5,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,13 +33,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -55,7 +64,7 @@ fun GameScreen() {
     val playerAtlas = remember { PlayerAtlas(context) }
     val enemyAtlas = remember { EnemyAtlas(context) }
     val uiAtlas = remember { UiAtlas(context) }
-    val engine = remember { GameEngine(tileMap) }
+    var engine by remember { mutableStateOf(GameEngine(tileMap)) }
 
     val inputVector = remember { mutableStateOf(0f to 0f) }
     var attackRequested by remember { mutableStateOf(false) }
@@ -74,6 +83,15 @@ fun GameScreen() {
             }
         }
     }
+
+    // Reading frameTick here recomposes the whole screen every frame, which is what keeps
+    // the HUD hearts and the death screen in sync with engine state. The Canvas below *also*
+    // reads it internally for its own draw-phase invalidation, but that alone only kept the
+    // Canvas itself fresh - HeartsHud and the death-screen check live outside the Canvas, so
+    // without this read they only ever updated on the next touch-driven recomposition (a tap
+    // or joystick drag), which is why hearts looked frozen and the death screen never showed.
+    @Suppress("UNUSED_EXPRESSION")
+    frameTick
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -188,7 +206,7 @@ fun GameScreen() {
         }
 
         HeartsHud(
-            health = engine.player.health,
+            healthPoints = engine.player.health,
             heartIcon = uiAtlas.heart,
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -209,22 +227,71 @@ fun GameScreen() {
                 .padding(24.dp),
             onTap = { attackRequested = true },
         )
+
+        if (engine.player.isDead) {
+            DeathScreen(onRestart = { engine = GameEngine(tileMap) })
+        }
     }
 }
 
 @Composable
-private fun HeartsHud(health: Int, heartIcon: ImageBitmap, modifier: Modifier = Modifier) {
+private fun HeartsHud(healthPoints: Int, heartIcon: ImageBitmap, modifier: Modifier = Modifier) {
     Row(modifier = modifier) {
-        repeat(MAX_HEALTH) { index ->
-            androidx.compose.foundation.Image(
-                bitmap = heartIcon,
-                contentDescription = null,
-                filterQuality = FilterQuality.None,
-                alpha = if (index < health) 1f else 0.25f,
+        repeat(HEART_COUNT) { index ->
+            // Each heart covers 2 health points: fully lit if both remain, half-lit (left
+            // half of the icon drawn at full opacity) if only one point remains, dim if none.
+            val pointsInThisHeart = (healthPoints - index * 2).coerceIn(0, 2)
+            Canvas(
                 modifier = Modifier
                     .size(28.dp)
-                    .padding(2.dp),
+                    .padding(2.dp)
+            ) {
+                drawImage(
+                    image = heartIcon,
+                    dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+                    alpha = 0.25f,
+                    filterQuality = FilterQuality.None,
+                )
+                if (pointsInThisHeart > 0) {
+                    val litWidth = if (pointsInThisHeart == 2) size.width else size.width / 2f
+                    clipRect(left = 0f, top = 0f, right = litWidth, bottom = size.height) {
+                        drawImage(
+                            image = heartIcon,
+                            dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+                            filterQuality = FilterQuality.None,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeathScreen(onRestart: () -> Unit) {
+    val isRussian = Locale.getDefault().language == "ru"
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}, // swallow touches so the joystick/attack button underneath can't be used
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = if (isRussian) "Вы мертвы" else "You are dead",
+                color = Color.White,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
             )
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(onClick = onRestart) {
+                Text(if (isRussian) "Начать заново" else "Restart")
+            }
         }
     }
 }

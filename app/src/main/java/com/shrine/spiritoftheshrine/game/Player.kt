@@ -5,7 +5,11 @@ enum class Direction { DOWN, UP, LEFT, RIGHT }
 private const val WALK_FPS = 8f
 const val ATTACK_DURATION = 0.35f
 const val INVULN_DURATION = 1f
-const val MAX_HEALTH = 6
+
+/** Hearts shown in the HUD. Health itself is tracked in half-heart points (2 per heart) -
+ * one enemy touch costs 1 point (half a heart), so it takes two touches to lose a full heart. */
+const val HEART_COUNT = 6
+const val MAX_HEALTH = HEART_COUNT * 2
 
 /** Plain mutable state (not Compose state) - GameEngine mutates it once per frame, the
  * screen redraws by bumping a single frame-tick counter rather than observing every field. */
@@ -33,10 +37,16 @@ class Player(startRow: Float, startCol: Float) {
     val isDead: Boolean get() = health <= 0
 
     fun updateFacing(dx: Float, dy: Float) {
-        facing = if (kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
-            if (dx > 0) Direction.RIGHT else Direction.LEFT
-        } else {
-            if (dy > 0) Direction.DOWN else Direction.UP
+        val absDx = kotlin.math.abs(dx)
+        val absDy = kotlin.math.abs(dy)
+        // Require one axis to clearly dominate before switching facing. Without this, holding
+        // the joystick anywhere near a diagonal - or just natural thumb jitter - made dx/dy
+        // wobble back and forth across the tie-break line every frame, flipping the sprite
+        // between its front and side poses so fast it looked like the character was spinning.
+        facing = when {
+            absDx > absDy * 1.3f -> if (dx > 0) Direction.RIGHT else Direction.LEFT
+            absDy > absDx * 1.3f -> if (dy > 0) Direction.DOWN else Direction.UP
+            else -> facing
         }
     }
 

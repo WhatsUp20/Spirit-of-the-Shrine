@@ -1,0 +1,13 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+.externalNativeBuild/
+.cxx/
+.kotlin/
+
+# Raw asset pack (94MB+ zip contents) - only the specific sliced PNGs actually
+# used by the app live under app/src/main/assets/, those are committed normally.
+/assets_raw/

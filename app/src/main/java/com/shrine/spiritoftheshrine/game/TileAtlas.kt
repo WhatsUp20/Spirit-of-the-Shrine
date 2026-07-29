@@ -1,0 +1,66 @@
+package com.shrine.spiritoftheshrine.game
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+
+private const val TILE = 16
+
+private fun loadBitmap(context: Context, assetPath: String): Bitmap =
+    context.assets.open(assetPath).use { BitmapFactory.decodeStream(it) }
+
+private fun Bitmap.cropTile(col: Int, row: Int, w: Int = TILE, h: Int = TILE): ImageBitmap =
+    Bitmap.createBitmap(this, col * TILE, row * TILE, w, h).asImageBitmap()
+
+/** 3x3 autotile block: [col][row], (1,1) is the fully-surrounded center tile. */
+private fun blobFrom(bitmap: Bitmap, originCol: Int, originRow: Int): Array<Array<ImageBitmap>> =
+    Array(3) { c -> Array(3) { r -> bitmap.cropTile(originCol + c, originRow + r) } }
+
+/**
+ * Given whether each neighbor is the *same* region as the tile being drawn, picks the
+ * (col, row) offset within a 3x3 blob block. Corner variants take priority over edges.
+ */
+fun blobIndex(sameUp: Boolean, sameDown: Boolean, sameLeft: Boolean, sameRight: Boolean): Pair<Int, Int> {
+    val exposedUp = !sameUp
+    val exposedDown = !sameDown
+    val exposedLeft = !sameLeft
+    val exposedRight = !sameRight
+    return when {
+        exposedUp && exposedLeft -> 0 to 0
+        exposedUp && exposedRight -> 2 to 0
+        exposedDown && exposedLeft -> 0 to 2
+        exposedDown && exposedRight -> 2 to 2
+        exposedUp -> 1 to 0
+        exposedDown -> 1 to 2
+        exposedLeft -> 0 to 1
+        exposedRight -> 2 to 1
+        else -> 1 to 1
+    }
+}
+
+/**
+ * Hand-picked cells from the Ninja Adventure Asset Pack (CC0, pixel-boy). Coordinates were
+ * found by overlaying a 16px grid on each sheet and reading off column/row by eye - see the
+ * conversation history for the exact sheets inspected. Floor-type tiles use a real 3x3 blob
+ * autotile (grass/village/dungeon/temple ground blend at their edges); walls, the gate and
+ * trees are single representative sprites (no corner blending - see project notes).
+ */
+class TileAtlas(context: Context) {
+    private val fieldSheet = loadBitmap(context, "tilesets/TilesetField.png")
+    private val reliefSheet = loadBitmap(context, "tilesets/TilesetRelief.png")
+    private val houseSheet = loadBitmap(context, "tilesets/TilesetHouse.png")
+    private val natureSheet = loadBitmap(context, "tilesets/TilesetNature.png")
+
+    val grass: ImageBitmap = fieldSheet.cropTile(1, 4)
+    val villageFloorBlob: Array<Array<ImageBitmap>> = blobFrom(fieldSheet, originCol = 0, originRow = 0)
+    val dungeonFloorBlob: Array<Array<ImageBitmap>> = blobFrom(fieldSheet, originCol = 0, originRow = 6)
+    val templeFloorBlob: Array<Array<ImageBitmap>> = blobFrom(fieldSheet, originCol = 0, originRow = 12)
+
+    val dungeonWall: ImageBitmap = reliefSheet.cropTile(5, 1)
+    val templeWall: ImageBitmap = reliefSheet.cropTile(5, 6)
+    val houseWall: ImageBitmap = houseSheet.cropTile(0, 3)
+    val templeGate: ImageBitmap = houseSheet.cropTile(9, 3)
+    val tree: ImageBitmap = natureSheet.cropTile(0, 0, w = 48, h = 48)
+}

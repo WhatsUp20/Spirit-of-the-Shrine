@@ -52,11 +52,16 @@ class TileAtlas(context: Context) {
     private val reliefSheet = loadBitmap(context, "tilesets/TilesetRelief.png")
     private val houseSheet = loadBitmap(context, "tilesets/TilesetHouse.png")
     private val natureSheet = loadBitmap(context, "tilesets/TilesetNature.png")
+    private val waterSheet = loadBitmap(context, "tilesets/TilesetWater.png")
 
     val grass: ImageBitmap = fieldSheet.cropTile(1, 4)
     val villageFloorBlob: Array<Array<ImageBitmap>> = blobFrom(fieldSheet, originCol = 0, originRow = 0)
     val dungeonFloorBlob: Array<Array<ImageBitmap>> = blobFrom(fieldSheet, originCol = 0, originRow = 6)
     val templeFloorBlob: Array<Array<ImageBitmap>> = blobFrom(fieldSheet, originCol = 0, originRow = 12)
+    // This is one cell of a decorative pond graphic (sand ring + foam edge around open water),
+    // reused here as the ocean's blob block - its "water meets land" edge art works just as
+    // well for a coastline as it does for a pond shore.
+    val waterBlob: Array<Array<ImageBitmap>> = blobFrom(waterSheet, originCol = 13, originRow = 0)
 
     val dungeonWall: ImageBitmap = reliefSheet.cropTile(5, 1)
     val templeWall: ImageBitmap = reliefSheet.cropTile(5, 6)

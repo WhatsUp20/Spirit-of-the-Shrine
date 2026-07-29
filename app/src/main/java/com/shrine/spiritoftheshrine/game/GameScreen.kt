@@ -133,6 +133,7 @@ fun GameScreen() {
                         TileType.VILLAGE_FLOOR -> drawBlob(atlas.villageFloorBlob, type, row, col, x, y)
                         TileType.DUNGEON_FLOOR -> drawBlob(atlas.dungeonFloorBlob, type, row, col, x, y)
                         TileType.TEMPLE_FLOOR -> drawBlob(atlas.templeFloorBlob, type, row, col, x, y)
+                        TileType.WATER -> drawBlob(atlas.waterBlob, type, row, col, x, y)
                         TileType.DUNGEON_WALL -> drawTileImage(atlas.dungeonWall, x, y, tilePx)
                         TileType.TEMPLE_WALL -> drawTileImage(atlas.templeWall, x, y, tilePx)
                         TileType.TEMPLE_GATE -> drawTileImage(atlas.templeGate, x, y, tilePx)

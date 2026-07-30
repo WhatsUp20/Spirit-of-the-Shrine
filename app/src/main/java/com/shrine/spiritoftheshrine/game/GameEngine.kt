@@ -95,7 +95,7 @@ class GameEngine(private val tileMap: TileMap) {
 
         val moving = !player.isAttacking && (dx != 0f || dy != 0f)
         if (moving) {
-            player.updateFacing(dx, dy, dt)
+            player.updateFacing(dx, dy)
             val newCol = player.col + dx * PLAYER_SPEED_TILES_PER_SEC * dt
             if (canOccupy(player.row, newCol, PLAYER_HALF_SIZE)) player.col = newCol
             val newRow = player.row + dy * PLAYER_SPEED_TILES_PER_SEC * dt

@@ -11,6 +11,7 @@ private const val PLAYER_HALF_SIZE = 0.3f
 private const val ENEMY_HALF_SIZE = 0.3f
 private const val ATTACK_REACH = 0.65f
 private const val ATTACK_HALF_SIZE = 0.45f
+private const val NPC_INTERACT_RADIUS = 1.3f
 
 data class TileRect(val rowMin: Float, val rowMax: Float, val colMin: Float, val colMax: Float)
 
@@ -53,16 +54,48 @@ class GameEngine(private val tileMap: TileMap) {
         Enemy(type, spawn.row + 0.5f, spawn.col + 0.5f, ENEMY_SPECS.getValue(type).maxHealth)
     }.toMutableList()
 
+    val npcs: List<Npc> = tileMap.spawnPoints
+        .filter { it.marker == MarkerType.NPC_SPAWN }
+        .map { Npc(it.row + 0.5f, it.col + 0.5f) }
+
+    var dialogueNpc: Npc? = null
+        private set
+    var dialogueLineIndex: Int = 0
+        private set
+    val isTalking: Boolean get() = dialogueNpc != null
+
+    /** Nearest NPC within talking range of the player, or null if none is close enough. */
+    fun nearbyNpc(): Npc? = npcs
+        .minByOrNull { hypot(it.row - player.row, it.col - player.col) }
+        ?.takeIf { hypot(it.row - player.row, it.col - player.col) <= NPC_INTERACT_RADIUS }
+
+    fun startDialogue() {
+        if (isTalking) return
+        dialogueNpc = nearbyNpc() ?: return
+        dialogueLineIndex = 0
+    }
+
+    /** Shows the next line, or ends the conversation once the last line has been read. */
+    fun advanceDialogue() {
+        if (dialogueNpc == null) return
+        if (dialogueLineIndex < NpcDialogue.lines().lastIndex) {
+            dialogueLineIndex++
+        } else {
+            dialogueNpc = null
+            dialogueLineIndex = 0
+        }
+    }
+
     /** dx/dy are the joystick's normalized input, each in [-1, 1]. */
     fun update(dt: Float, dx: Float, dy: Float, attackPressed: Boolean) {
-        if (player.isDead) return // freeze the world in place behind the death screen
+        if (player.isDead || isTalking) return // freeze the world behind the death/dialogue screen
 
         if (attackPressed) player.tryStartAttack()
         player.tickCombatTimers(dt)
 
         val moving = !player.isAttacking && (dx != 0f || dy != 0f)
         if (moving) {
-            player.updateFacing(dx, dy)
+            player.updateFacing(dx, dy, dt)
             val newCol = player.col + dx * PLAYER_SPEED_TILES_PER_SEC * dt
             if (canOccupy(player.row, newCol, PLAYER_HALF_SIZE)) player.col = newCol
             val newRow = player.row + dy * PLAYER_SPEED_TILES_PER_SEC * dt

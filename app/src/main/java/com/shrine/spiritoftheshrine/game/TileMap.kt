@@ -19,6 +19,7 @@ enum class MarkerType {
     SLIME_SPAWN,
     SPIRIT_SPAWN,
     BOSS_SPAWN,
+    NPC_SPAWN,
 }
 
 data class SpawnPoint(val marker: MarkerType, val row: Int, val col: Int)
@@ -42,7 +43,7 @@ private val RAW_MAP = """
 ~~#.VVVVVVVVVVVVVVVVVV#..........#..#..............#~~
 ~~#.VVHHHVVVVVVVHHHVVV........#.###....#......#.##.#~~
 ~~#.VVHHHVVVVVVVHHHVVV..#...#..................#..##~~
-~~#.VVVVVVVVPVVVVVVVVV...#..#.....#.........#.....##~~
+~~#.VVVVVVVVPVVNVVVVVV...#..#.....#.........#.....##~~
 ~~#.VVVVVVVVVVVVVVVVVV.......#...#.#.#......#......#~~
 ~~#.VVVVVVVVVVVVVVVVVV.......#......#...........#..#~~
 ~~#......#....#............#..#..........#...#.....#~~
@@ -87,7 +88,7 @@ private val RAW_MAP = """
 
 private fun charToTile(c: Char): TileType = when (c) {
     '#' -> TileType.TREE
-    'V', 'P' -> TileType.VILLAGE_FLOOR
+    'V', 'P', 'N' -> TileType.VILLAGE_FLOOR
     'H' -> TileType.HOUSE
     'D', 'C', 's', 'q' -> TileType.DUNGEON_FLOOR
     'X' -> TileType.DUNGEON_WALL
@@ -104,6 +105,7 @@ private fun charToMarker(c: Char): MarkerType? = when (c) {
     's' -> MarkerType.SLIME_SPAWN
     'q' -> MarkerType.SPIRIT_SPAWN
     'B' -> MarkerType.BOSS_SPAWN
+    'N' -> MarkerType.NPC_SPAWN
     else -> null
 }
 

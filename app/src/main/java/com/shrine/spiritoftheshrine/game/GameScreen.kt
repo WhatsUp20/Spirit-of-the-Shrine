@@ -28,6 +28,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import android.os.Build
 import android.view.View
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,8 +69,20 @@ fun GameScreen() {
     val gameAudio = remember { GameAudio(context) }
     var engine by remember { mutableStateOf(GameEngine(tileMap)) }
 
-    DisposableEffect(Unit) {
-        onDispose { gameAudio.release() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> gameAudio.pauseMusic()
+                Lifecycle.Event.ON_RESUME -> gameAudio.resumeMusic()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            gameAudio.release()
+        }
     }
 
     val inputVector = remember { mutableStateOf(0f to 0f) }

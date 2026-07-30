@@ -71,6 +71,7 @@ fun GameScreen() {
 
     val inputVector = remember { mutableStateOf(0f to 0f) }
     var attackRequested by remember { mutableStateOf(false) }
+    var isInventoryOpen by remember { mutableStateOf(false) }
     var frameTick by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
@@ -80,7 +81,7 @@ fun GameScreen() {
                 val dt = ((nowNanos - lastFrameNanos) / 1_000_000_000.0).toFloat().coerceAtMost(1f / 20f)
                 lastFrameNanos = nowNanos
                 val (dx, dy) = inputVector.value
-                engine.update(dt, dx, dy, attackRequested)
+                engine.update(dt, dx, dy, attackRequested, paused = isInventoryOpen)
                 attackRequested = false
                 frameTick++
             }
@@ -180,6 +181,18 @@ fun GameScreen() {
                 )
             }
 
+            for (pickup in engine.potionPickups) {
+                val pickupSize = tilePx * 0.7f
+                val cx = originX + (pickup.col + 0.5f) * tilePx
+                val cy = originY + (pickup.row + 0.5f) * tilePx
+                drawImage(
+                    image = uiAtlas.potion,
+                    dstOffset = IntOffset((cx - pickupSize / 2f).roundToInt(), (cy - pickupSize / 2f).roundToInt()),
+                    dstSize = IntSize(pickupSize.roundToInt(), pickupSize.roundToInt()),
+                    filterQuality = FilterQuality.None,
+                )
+            }
+
             for (enemy in engine.enemies) {
                 val enemySize = tilePx * 1.1f
                 val cx = originX + (enemy.col + 0.5f) * tilePx
@@ -244,7 +257,17 @@ fun GameScreen() {
             onTap = { attackRequested = true },
         )
 
-        if (!engine.isTalking && engine.nearbyNpc() != null) {
+        if (!engine.isTalking && !isInventoryOpen && !engine.player.isDead) {
+            InventoryButton(
+                icon = uiAtlas.bag,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 116.dp, bottom = 24.dp),
+                onTap = { isInventoryOpen = true },
+            )
+        }
+
+        if (!engine.isTalking && !isInventoryOpen && engine.nearbyNpc() != null) {
             TalkButton(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -253,11 +276,29 @@ fun GameScreen() {
             )
         }
 
+        if (!engine.isTalking && !isInventoryOpen && engine.nearbyPotionPickup() != null) {
+            PickupButton(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 116.dp, bottom = 120.dp),
+                onTap = { engine.pickUpPotion() },
+            )
+        }
+
         if (engine.isTalking) {
             DialogueBox(
                 npcSprite = npcAtlas.sprite,
                 lineIndex = engine.dialogueLineIndex,
                 onAdvance = { engine.advanceDialogue() },
+            )
+        }
+
+        if (isInventoryOpen) {
+            InventoryPanel(
+                potionIcon = uiAtlas.potion,
+                potionCount = engine.player.potionCount,
+                onUsePotion = { engine.player.usePotion() },
+                onClose = { isInventoryOpen = false },
             )
         }
 
@@ -352,6 +393,133 @@ private fun TalkButton(modifier: Modifier = Modifier, onTap: () -> Unit) {
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
         )
+    }
+}
+
+@Composable
+private fun PickupButton(modifier: Modifier = Modifier, onTap: () -> Unit) {
+    val isRussian = Locale.getDefault().language == "ru"
+    val view = LocalView.current
+    Box(
+        modifier = modifier
+            .size(56.dp)
+            .excludeFromSystemGestures(view)
+            .clip(CircleShape)
+            .background(Color(0xFF3DBF6E).copy(alpha = 0.85f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onTap,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = if (isRussian) "Взять" else "Take",
+            color = Color.Black,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun InventoryButton(icon: ImageBitmap, modifier: Modifier = Modifier, onTap: () -> Unit) {
+    val view = LocalView.current
+    Box(
+        modifier = modifier
+            .size(56.dp)
+            .excludeFromSystemGestures(view)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.25f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onTap,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.foundation.Image(
+            bitmap = icon,
+            contentDescription = null,
+            filterQuality = FilterQuality.None,
+            modifier = Modifier.size(28.dp),
+        )
+    }
+}
+
+@Composable
+private fun InventoryPanel(
+    potionIcon: ImageBitmap,
+    potionCount: Int,
+    onUsePotion: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val isRussian = Locale.getDefault().language == "ru"
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.6f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}, // swallow touches so controls underneath can't be used
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .background(Color(0xFF2B2B2B))
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = if (isRussian) "Инвентарь" else "Inventory",
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            if (potionCount <= 0) {
+                Text(
+                    text = if (isRussian) "Пусто" else "Empty",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 14.sp,
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.12f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onUsePotion,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        androidx.compose.foundation.Image(
+                            bitmap = potionIcon,
+                            contentDescription = null,
+                            filterQuality = FilterQuality.None,
+                            modifier = Modifier.size(28.dp),
+                        )
+                        Text(text = "x$potionCount", color = Color.White, fontSize = 12.sp)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = if (isRussian) "(тап по зелью, чтобы выпить)" else "(tap the potion to drink)",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 11.sp,
+                )
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+            Button(onClick = onClose) {
+                Text(if (isRussian) "Закрыть" else "Close")
+            }
+        }
     }
 }
 

@@ -20,6 +20,7 @@ enum class MarkerType {
     SPIRIT_SPAWN,
     BOSS_SPAWN,
     NPC_SPAWN,
+    POTION_PICKUP,
 }
 
 data class SpawnPoint(val marker: MarkerType, val row: Int, val col: Int)
@@ -48,7 +49,7 @@ private val RAW_MAP = """
 ~~#.VVVVVVVVVVVVVVVVVV.......#......#...........#..#~~
 ~~#......#....#............#..#..........#...#.....#~~
 ~~#..#......#..##.........#.....#.........##.......#~~
-~~#.........#................#..............#......#~~
+~~#.........#........L.......#..............#......#~~
 ~~#.#........#..............#..........#...#####...#~~
 ~~#.#.....#.....#.#.......#.#....#................##~~
 ~~##....#............#D...###.........XXXXXXXXXXX..#~~
@@ -106,6 +107,7 @@ private fun charToMarker(c: Char): MarkerType? = when (c) {
     'q' -> MarkerType.SPIRIT_SPAWN
     'B' -> MarkerType.BOSS_SPAWN
     'N' -> MarkerType.NPC_SPAWN
+    'L' -> MarkerType.POTION_PICKUP
     else -> null
 }
 

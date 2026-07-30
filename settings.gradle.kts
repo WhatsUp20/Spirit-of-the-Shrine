@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Spirit of the Shrine"
+rootProject.name = "Spirits of the Shrine"
 include(":app")

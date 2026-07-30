@@ -48,6 +48,15 @@ class GameAudio(context: Context) {
         soundPool.play(soundId, 1f, 1f, 0, 0, 1f)
     }
 
+    /** Call from onPause/onStop so the music doesn't keep playing while the app is backgrounded. */
+    fun pauseMusic() {
+        if (music.isPlaying) music.pause()
+    }
+
+    fun resumeMusic() {
+        if (!music.isPlaying) music.start()
+    }
+
     fun release() {
         soundPool.release()
         music.stop()

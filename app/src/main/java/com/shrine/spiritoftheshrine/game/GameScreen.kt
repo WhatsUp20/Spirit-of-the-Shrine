@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -62,7 +63,12 @@ fun GameScreen() {
     val enemyAtlas = remember { EnemyAtlas(context) }
     val npcAtlas = remember { NpcAtlas(context) }
     val uiAtlas = remember { UiAtlas(context) }
+    val gameAudio = remember { GameAudio(context) }
     var engine by remember { mutableStateOf(GameEngine(tileMap)) }
+
+    DisposableEffect(Unit) {
+        onDispose { gameAudio.release() }
+    }
 
     val inputVector = remember { mutableStateOf(0f to 0f) }
     var attackRequested by remember { mutableStateOf(false) }
@@ -78,6 +84,8 @@ fun GameScreen() {
                 val (dx, dy) = inputVector.value
                 engine.update(dt, dx, dy, attackRequested, paused = isInventoryOpen)
                 attackRequested = false
+                for (event in engine.pendingSounds) gameAudio.play(event)
+                engine.pendingSounds.clear()
                 frameTick++
             }
         }

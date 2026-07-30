@@ -53,6 +53,7 @@ class TileAtlas(context: Context) {
     private val houseSheet = loadBitmap(context, "tilesets/TilesetHouse.png")
     private val natureSheet = loadBitmap(context, "tilesets/TilesetNature.png")
     private val waterSheet = loadBitmap(context, "tilesets/TilesetWater.png")
+    private val waterRippleSheet = loadBitmap(context, "tilesets/WaterRipples.png")
 
     val grass: ImageBitmap = fieldSheet.cropTile(1, 4)
     val villageFloorBlob: Array<Array<ImageBitmap>> = blobFrom(fieldSheet, originCol = 0, originRow = 0)
@@ -65,6 +66,10 @@ class TileAtlas(context: Context) {
     // reused here as the ocean's blob block - its "water meets land" edge art works just as
     // well for a coastline as it does for a pond shore.
     val waterBlob: Array<Array<ImageBitmap>> = blobFrom(waterSheet, originCol = 13, originRow = 0)
+    // A 4-frame ripple animation, used only for fully-surrounded "open water" tiles - the
+    // shore-blending edge/corner tiles above stay static since there's no animated set with
+    // matching sand/grass edges.
+    val waterRipple: List<ImageBitmap> = (0 until 4).map { waterRippleSheet.cropTile(it, 0) }
 
     val dungeonWall: ImageBitmap = reliefSheet.cropTile(5, 1)
     val templeWall: ImageBitmap = reliefSheet.cropTile(5, 6)
@@ -82,4 +87,11 @@ class TileAtlas(context: Context) {
     // Hand-drawn (not from the pack - it has no torii asset): a mossy vermilion shrine gate,
     // the landmark on the path from the beach to the village. Non-blocking, walked under.
     val torii: ImageBitmap = loadBitmap(context, "sprites/landmarks/Torii.png").asImageBitmap()
+    // Shipwreck debris scattered on the beach - a real crate from the pack plus two hand-drawn
+    // pieces (plank, barrel) for variety. Picked per-marker by position so it stays deterministic.
+    val debris: List<ImageBitmap> = listOf(
+        loadBitmap(context, "sprites/landmarks/DebrisCrate.png").asImageBitmap(),
+        loadBitmap(context, "sprites/landmarks/DebrisPlank.png").asImageBitmap(),
+        loadBitmap(context, "sprites/landmarks/DebrisBarrel.png").asImageBitmap(),
+    )
 }

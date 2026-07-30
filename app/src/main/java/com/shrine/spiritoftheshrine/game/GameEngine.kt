@@ -12,8 +12,11 @@ private const val ENEMY_HALF_SIZE = 0.3f
 private const val ATTACK_REACH = 0.65f
 private const val ATTACK_HALF_SIZE = 0.45f
 private const val NPC_INTERACT_RADIUS = 1.3f
+private const val POTION_PICKUP_RADIUS = 0.8f
 
 data class TileRect(val rowMin: Float, val rowMax: Float, val colMin: Float, val colMax: Float)
+
+class PotionPickup(val row: Float, val col: Float)
 
 private data class EnemySpec(
     val patrolSpeed: Float,
@@ -58,6 +61,11 @@ class GameEngine(private val tileMap: TileMap) {
         .filter { it.marker == MarkerType.NPC_SPAWN }
         .map { Npc(it.row + 0.5f, it.col + 0.5f) }
 
+    val potionPickups: MutableList<PotionPickup> = tileMap.spawnPoints
+        .filter { it.marker == MarkerType.POTION_PICKUP }
+        .map { PotionPickup(it.row + 0.5f, it.col + 0.5f) }
+        .toMutableList()
+
     var dialogueNpc: Npc? = null
         private set
     var dialogueLineIndex: Int = 0
@@ -86,9 +94,21 @@ class GameEngine(private val tileMap: TileMap) {
         }
     }
 
-    /** dx/dy are the joystick's normalized input, each in [-1, 1]. */
-    fun update(dt: Float, dx: Float, dy: Float, attackPressed: Boolean) {
-        if (player.isDead || isTalking) return // freeze the world behind the death/dialogue screen
+    /** Nearest potion pickup within reach of the player, or null if none is close enough. */
+    fun nearbyPotionPickup(): PotionPickup? = potionPickups
+        .minByOrNull { hypot(it.row - player.row, it.col - player.col) }
+        ?.takeIf { hypot(it.row - player.row, it.col - player.col) <= POTION_PICKUP_RADIUS }
+
+    fun pickUpPotion() {
+        val pickup = nearbyPotionPickup() ?: return
+        potionPickups.remove(pickup)
+        player.addPotion()
+    }
+
+    /** dx/dy are the joystick's normalized input, each in [-1, 1]. [paused] freezes the world
+     * while a full-screen UI overlay (dialogue, inventory) is open on top of it. */
+    fun update(dt: Float, dx: Float, dy: Float, attackPressed: Boolean, paused: Boolean = false) {
+        if (player.isDead || isTalking || paused) return
 
         if (attackPressed) player.tryStartAttack()
         player.tickCombatTimers(dt)

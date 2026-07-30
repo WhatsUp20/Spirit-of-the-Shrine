@@ -5,10 +5,15 @@ import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 
-/** Small HUD/UI icons - heart for the health bar, sword for the attack button. */
+/** Small HUD/UI icons - heart for the health bar, sword for the attack button, bag for the
+ * inventory button, potion for the world pickup and the inventory slot. */
 class UiAtlas(context: Context) {
     val heart: ImageBitmap = context.assets.open("sprites/items/Heart.png")
         .use { BitmapFactory.decodeStream(it) }.asImageBitmap()
     val sword: ImageBitmap = context.assets.open("sprites/items/Sword.png")
+        .use { BitmapFactory.decodeStream(it) }.asImageBitmap()
+    val bag: ImageBitmap = context.assets.open("sprites/items/Bag.png")
+        .use { BitmapFactory.decodeStream(it) }.asImageBitmap()
+    val potion: ImageBitmap = context.assets.open("sprites/items/Potion.png")
         .use { BitmapFactory.decodeStream(it) }.asImageBitmap()
 }

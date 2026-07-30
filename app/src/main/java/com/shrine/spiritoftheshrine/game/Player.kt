@@ -11,6 +11,9 @@ const val INVULN_DURATION = 1f
 const val HEART_COUNT = 6
 const val MAX_HEALTH = HEART_COUNT * 2
 
+/** A potion restores half of max health. */
+private const val POTION_HEAL_AMOUNT = MAX_HEALTH / 2
+
 /** Plain mutable state (not Compose state) - GameEngine mutates it once per frame, the
  * screen redraws by bumping a single frame-tick counter rather than observing every field. */
 class Player(startRow: Float, startCol: Float) {
@@ -25,6 +28,8 @@ class Player(startRow: Float, startCol: Float) {
     var health: Int = MAX_HEALTH
         private set
     var attackSeq: Int = 0
+        private set
+    var potionCount: Int = 0
         private set
     private var attackTimer: Float = 0f
     private var invulnTimer: Float = 0f
@@ -66,5 +71,17 @@ class Player(startRow: Float, startCol: Float) {
         if (isInvulnerable || isDead) return
         health = (health - amount).coerceAtLeast(0)
         invulnTimer = INVULN_DURATION
+    }
+
+    fun addPotion() {
+        potionCount++
+    }
+
+    /** Heals for half of max health. No-ops (keeps the potion) if already at full health. */
+    fun usePotion(): Boolean {
+        if (potionCount <= 0 || health >= MAX_HEALTH) return false
+        potionCount--
+        health = (health + POTION_HEAL_AMOUNT).coerceAtMost(MAX_HEALTH)
+        return true
     }
 }

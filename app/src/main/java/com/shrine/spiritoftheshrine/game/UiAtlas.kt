@@ -16,4 +16,6 @@ class UiAtlas(context: Context) {
         .use { BitmapFactory.decodeStream(it) }.asImageBitmap()
     val potion: ImageBitmap = context.assets.open("sprites/items/Potion.png")
         .use { BitmapFactory.decodeStream(it) }.asImageBitmap()
+    val key: ImageBitmap = context.assets.open("sprites/items/Key.png")
+        .use { BitmapFactory.decodeStream(it) }.asImageBitmap()
 }

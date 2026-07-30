@@ -31,6 +31,8 @@ class Player(startRow: Float, startCol: Float) {
         private set
     var potionCount: Int = 0
         private set
+    var hasKey: Boolean = false
+        private set
     private var attackTimer: Float = 0f
     private var invulnTimer: Float = 0f
 
@@ -75,6 +77,14 @@ class Player(startRow: Float, startCol: Float) {
 
     fun addPotion() {
         potionCount++
+    }
+
+    fun addKey() {
+        hasKey = true
+    }
+
+    fun consumeKey() {
+        hasKey = false
     }
 
     /** Heals for half of max health. No-ops (keeps the potion) if already at full health. */

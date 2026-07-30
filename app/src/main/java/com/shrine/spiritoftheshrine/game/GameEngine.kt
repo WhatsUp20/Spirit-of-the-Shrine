@@ -17,6 +17,8 @@ private const val GATE_UNLOCK_RADIUS = 1.5f
 
 data class TileRect(val rowMin: Float, val rowMax: Float, val colMin: Float, val colMax: Float)
 
+enum class SoundEvent { SWORD_SWING, ENEMY_HIT, PLAYER_HURT }
+
 class PotionPickup(val row: Float, val col: Float)
 class KeyPickup(val row: Float, val col: Float)
 
@@ -92,6 +94,11 @@ class GameEngine(private val tileMap: TileMap) {
     var isGateOpen: Boolean = false
         private set
 
+    /** Sound effects triggered this frame - the caller drains and plays these, then clears the
+     * list. Kept here rather than in GameScreen so the "did a hit actually land" logic (which
+     * already has to account for invulnerability / one-hit-per-swing) lives in one place. */
+    val pendingSounds: MutableList<SoundEvent> = mutableListOf()
+
     var dialogueNpc: Npc? = null
         private set
     var dialogueLineIndex: Int = 0
@@ -147,7 +154,7 @@ class GameEngine(private val tileMap: TileMap) {
     fun update(dt: Float, dx: Float, dy: Float, attackPressed: Boolean, paused: Boolean = false) {
         if (player.isDead || isTalking || paused) return
 
-        if (attackPressed) player.tryStartAttack()
+        if (attackPressed && player.tryStartAttack()) pendingSounds.add(SoundEvent.SWORD_SWING)
         player.tickCombatTimers(dt)
 
         if (!isGateOpen && player.hasKey) {
@@ -176,7 +183,7 @@ class GameEngine(private val tileMap: TileMap) {
             updateEnemyAI(enemy, dt)
             val enemyHalfSize = ENEMY_SPECS.getValue(enemy.type).halfSize
             if (hitbox != null && rectOverlapsBox(hitbox, enemy.row, enemy.col, enemyHalfSize)) {
-                enemy.takeDamage(1, player.attackSeq)
+                if (enemy.takeDamage(1, player.attackSeq)) pendingSounds.add(SoundEvent.ENEMY_HIT)
             }
         }
         enemies.removeAll { it.isDead }
@@ -231,7 +238,7 @@ class GameEngine(private val tileMap: TileMap) {
             }
             EnemyBehaviorState.ATTACK -> {
                 if (enemy.attackCooldown <= 0f) {
-                    player.takeDamage(spec.contactDamage)
+                    if (player.takeDamage(spec.contactDamage)) pendingSounds.add(SoundEvent.PLAYER_HURT)
                     enemy.attackCooldown = spec.attackCooldown
                 }
             }

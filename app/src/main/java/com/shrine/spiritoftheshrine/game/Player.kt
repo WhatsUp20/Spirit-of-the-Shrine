@@ -69,10 +69,13 @@ class Player(startRow: Float, startCol: Float) {
         if (invulnTimer > 0f) invulnTimer = (invulnTimer - dt).coerceAtLeast(0f)
     }
 
-    fun takeDamage(amount: Int) {
-        if (isInvulnerable || isDead) return
+    /** Returns whether the hit actually landed (false while invulnerable or already dead), so
+     * callers can gate one-shot effects like a hurt sound on a real hit. */
+    fun takeDamage(amount: Int): Boolean {
+        if (isInvulnerable || isDead) return false
         health = (health - amount).coerceAtLeast(0)
         invulnTimer = INVULN_DURATION
+        return true
     }
 
     fun addPotion() {

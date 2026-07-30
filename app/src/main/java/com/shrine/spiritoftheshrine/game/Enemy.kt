@@ -37,11 +37,14 @@ class Enemy(
         if (hitFlashTimer > 0f) hitFlashTimer = (hitFlashTimer - dt).coerceAtLeast(0f)
     }
 
-    /** [attackSeq] identifies which sword swing this is, so one swing can't hit the same enemy twice. */
-    fun takeDamage(amount: Int, attackSeq: Int) {
-        if (isDead || lastHitByAttackSeq == attackSeq) return
+    /** [attackSeq] identifies which sword swing this is, so one swing can't hit the same enemy
+     * twice. Returns whether the hit actually landed, so callers can gate one-shot effects
+     * (like a hit sound) on a real hit rather than every frame the hitbox overlaps. */
+    fun takeDamage(amount: Int, attackSeq: Int): Boolean {
+        if (isDead || lastHitByAttackSeq == attackSeq) return false
         lastHitByAttackSeq = attackSeq
         health = (health - amount).coerceAtLeast(0)
         hitFlashTimer = HIT_FLASH_DURATION
+        return true
     }
 }

@@ -8,15 +8,17 @@ import kotlin.random.Random
 
 private const val PLAYER_SPEED_TILES_PER_SEC = 4.5f
 private const val PLAYER_HALF_SIZE = 0.3f
-private const val ENEMY_HALF_SIZE = 0.3f
 private const val ATTACK_REACH = 0.65f
 private const val ATTACK_HALF_SIZE = 0.45f
 private const val NPC_INTERACT_RADIUS = 1.3f
 private const val POTION_PICKUP_RADIUS = 0.8f
+private const val KEY_PICKUP_RADIUS = 0.8f
+private const val GATE_UNLOCK_RADIUS = 1.5f
 
 data class TileRect(val rowMin: Float, val rowMax: Float, val colMin: Float, val colMax: Float)
 
 class PotionPickup(val row: Float, val col: Float)
+class KeyPickup(val row: Float, val col: Float)
 
 private data class EnemySpec(
     val patrolSpeed: Float,
@@ -27,6 +29,7 @@ private data class EnemySpec(
     val attackCooldown: Float,
     val contactDamage: Int,
     val maxHealth: Int,
+    val halfSize: Float = 0.3f,
 )
 
 private val ENEMY_SPECS = mapOf(
@@ -40,6 +43,13 @@ private val ENEMY_SPECS = mapOf(
         detectRadius = 5f, attackRadius = 0.65f, loseRadius = 6.5f,
         attackCooldown = 1.0f, contactDamage = 1, maxHealth = 3,
     ),
+    // Bigger, tougher, hits harder - guards the temple's boss room.
+    EnemyType.BOSS to EnemySpec(
+        patrolSpeed = 0.6f, chaseSpeed = 1.4f,
+        detectRadius = 4.5f, attackRadius = 0.9f, loseRadius = 7f,
+        attackCooldown = 1.0f, contactDamage = 2, maxHealth = 9,
+        halfSize = 0.6f,
+    ),
 )
 
 class GameEngine(private val tileMap: TileMap) {
@@ -52,6 +62,7 @@ class GameEngine(private val tileMap: TileMap) {
         val type = when (spawn.marker) {
             MarkerType.SLIME_SPAWN -> EnemyType.SLIME
             MarkerType.SPIRIT_SPAWN -> EnemyType.SPIRIT
+            MarkerType.BOSS_SPAWN -> EnemyType.BOSS
             else -> return@mapNotNull null
         }
         Enemy(type, spawn.row + 0.5f, spawn.col + 0.5f, ENEMY_SPECS.getValue(type).maxHealth)
@@ -65,6 +76,21 @@ class GameEngine(private val tileMap: TileMap) {
         .filter { it.marker == MarkerType.POTION_PICKUP }
         .map { PotionPickup(it.row + 0.5f, it.col + 0.5f) }
         .toMutableList()
+
+    val keyPickups: MutableList<KeyPickup> = tileMap.spawnPoints
+        .filter { it.marker == MarkerType.KEY_PICKUP }
+        .map { KeyPickup(it.row + 0.5f, it.col + 0.5f) }
+        .toMutableList()
+
+    /** Every TEMPLE_GATE tile, scanned once - the gate unlocks when the player reaches any of them with the key. */
+    private val gateTiles: List<Pair<Int, Int>> = (0 until tileMap.height).flatMap { row ->
+        (0 until tileMap.width).mapNotNull { col ->
+            (row to col).takeIf { tileMap.tileAt(row, col) == TileType.TEMPLE_GATE }
+        }
+    }
+
+    var isGateOpen: Boolean = false
+        private set
 
     var dialogueNpc: Npc? = null
         private set
@@ -105,6 +131,17 @@ class GameEngine(private val tileMap: TileMap) {
         player.addPotion()
     }
 
+    /** Nearest key pickup within reach of the player, or null if none is close enough. */
+    fun nearbyKeyPickup(): KeyPickup? = keyPickups
+        .minByOrNull { hypot(it.row - player.row, it.col - player.col) }
+        ?.takeIf { hypot(it.row - player.row, it.col - player.col) <= KEY_PICKUP_RADIUS }
+
+    fun pickUpKey() {
+        val pickup = nearbyKeyPickup() ?: return
+        keyPickups.remove(pickup)
+        player.addKey()
+    }
+
     /** dx/dy are the joystick's normalized input, each in [-1, 1]. [paused] freezes the world
      * while a full-screen UI overlay (dialogue, inventory) is open on top of it. */
     fun update(dt: Float, dx: Float, dy: Float, attackPressed: Boolean, paused: Boolean = false) {
@@ -112,6 +149,16 @@ class GameEngine(private val tileMap: TileMap) {
 
         if (attackPressed) player.tryStartAttack()
         player.tickCombatTimers(dt)
+
+        if (!isGateOpen && player.hasKey) {
+            val nearGate = gateTiles.any { (row, col) ->
+                hypot(player.row - (row + 0.5f), player.col - (col + 0.5f)) <= GATE_UNLOCK_RADIUS
+            }
+            if (nearGate) {
+                isGateOpen = true
+                player.consumeKey()
+            }
+        }
 
         val moving = !player.isAttacking && (dx != 0f || dy != 0f)
         if (moving) {
@@ -127,7 +174,8 @@ class GameEngine(private val tileMap: TileMap) {
         for (enemy in enemies) {
             if (enemy.isDead) continue
             updateEnemyAI(enemy, dt)
-            if (hitbox != null && rectOverlapsBox(hitbox, enemy.row, enemy.col, ENEMY_HALF_SIZE)) {
+            val enemyHalfSize = ENEMY_SPECS.getValue(enemy.type).halfSize
+            if (hitbox != null && rectOverlapsBox(hitbox, enemy.row, enemy.col, enemyHalfSize)) {
                 enemy.takeDamage(1, player.attackSeq)
             }
         }
@@ -178,7 +226,7 @@ class GameEngine(private val tileMap: TileMap) {
                 if (dist > 0.01f) {
                     val moveRow = dRow / dist * spec.chaseSpeed * dt
                     val moveCol = dCol / dist * spec.chaseSpeed * dt
-                    tryMoveEnemy(enemy, enemy.row + moveRow, enemy.col + moveCol)
+                    tryMoveEnemy(enemy, enemy.row + moveRow, enemy.col + moveCol, spec.halfSize)
                 }
             }
             EnemyBehaviorState.ATTACK -> {
@@ -205,14 +253,19 @@ class GameEngine(private val tileMap: TileMap) {
             val dCol = enemy.patrolTargetCol - enemy.col
             val d = hypot(dRow, dCol)
             if (d > 0.01f) {
-                tryMoveEnemy(enemy, enemy.row + dRow / d * spec.patrolSpeed * dt, enemy.col + dCol / d * spec.patrolSpeed * dt)
+                tryMoveEnemy(
+                    enemy,
+                    enemy.row + dRow / d * spec.patrolSpeed * dt,
+                    enemy.col + dCol / d * spec.patrolSpeed * dt,
+                    spec.halfSize,
+                )
             }
         }
     }
 
-    private fun tryMoveEnemy(enemy: Enemy, targetRow: Float, targetCol: Float) {
-        if (canOccupy(enemy.row, targetCol, ENEMY_HALF_SIZE)) enemy.col = targetCol
-        if (canOccupy(targetRow, enemy.col, ENEMY_HALF_SIZE)) enemy.row = targetRow
+    private fun tryMoveEnemy(enemy: Enemy, targetRow: Float, targetCol: Float, halfSize: Float) {
+        if (canOccupy(enemy.row, targetCol, halfSize)) enemy.col = targetCol
+        if (canOccupy(targetRow, enemy.col, halfSize)) enemy.row = targetRow
     }
 
     private fun rectOverlapsBox(rect: TileRect, row: Float, col: Float, halfSize: Float): Boolean =
@@ -226,6 +279,13 @@ class GameEngine(private val tileMap: TileMap) {
             (row + halfSize) to (col - halfSize),
             (row + halfSize) to (col + halfSize),
         )
-        return corners.all { (r, c) -> tileMap.isWalkable(floor(r).toInt(), floor(c).toInt()) }
+        return corners.all { (r, c) -> isPassable(floor(r).toInt(), floor(c).toInt()) }
+    }
+
+    /** Same as [TileMap.isWalkable], except the temple gate opens up once [isGateOpen]. */
+    private fun isPassable(row: Int, col: Int): Boolean {
+        val type = tileMap.tileAt(row, col)
+        if (type == TileType.TEMPLE_GATE) return isGateOpen
+        return type.walkable
     }
 }

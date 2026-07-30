@@ -3,8 +3,6 @@ package com.shrine.spiritoftheshrine.game
 enum class EnemyType { SLIME, SPIRIT }
 enum class EnemyBehaviorState { PATROL, CHASE, ATTACK }
 
-// Only frames 0-1 of the sheet are used (see animFrame) - frames 2-3 lean the sprite
-// asymmetrically left/right, which read as the creature spinning when cycled through.
 private const val ANIM_FPS = 3f
 private const val HIT_FLASH_DURATION = 0.15f
 
@@ -31,7 +29,7 @@ class Enemy(
 
     val isDead: Boolean get() = health <= 0
     val isFlashing: Boolean get() = hitFlashTimer > 0f
-    val animFrame: Int get() = (animTime * ANIM_FPS).toInt() % 2
+    val animFrame: Int get() = (animTime * ANIM_FPS).toInt() % 4
 
     fun advanceAnimation(dt: Float) {
         animTime += dt

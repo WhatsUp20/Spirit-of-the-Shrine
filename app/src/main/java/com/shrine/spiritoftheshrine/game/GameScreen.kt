@@ -51,9 +51,12 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlinx.coroutines.delay
 
 /** Tiles visible across the shorter screen dimension - sets the zoom level. */
 private const val VISIBLE_TILES = 16f
@@ -67,6 +70,7 @@ fun GameScreen() {
     val enemyAtlas = remember { EnemyAtlas(context) }
     val npcAtlas = remember { NpcAtlas(context) }
     val uiAtlas = remember { UiAtlas(context) }
+    val cutsceneAtlas = remember { CutsceneAtlas(context) }
     val gameAudio = remember { GameAudio(context) }
     var engine by remember { mutableStateOf(GameEngine(tileMap)) }
 
@@ -89,8 +93,25 @@ fun GameScreen() {
     val inputVector = remember { mutableStateOf(0f to 0f) }
     var attackRequested by remember { mutableStateOf(false) }
     var isInventoryOpen by remember { mutableStateOf(false) }
-    var introComplete by remember { mutableStateOf(false) }
+    var introPhase by remember { mutableStateOf(IntroPhase.SHIP) }
     var cutsceneLineIndex by remember { mutableStateOf(0) }
+    var fadeInAlpha by remember { mutableStateOf(1f) }
+
+    LaunchedEffect(introPhase) {
+        if (introPhase != IntroPhase.FADE_IN) return@LaunchedEffect
+        var elapsed = 0f
+        var lastFrameNanos = withFrameNanos { it }
+        while (elapsed < FADE_IN_DURATION_S) {
+            withFrameNanos { nowNanos ->
+                val dt = ((nowNanos - lastFrameNanos) / 1_000_000_000.0).toFloat()
+                lastFrameNanos = nowNanos
+                elapsed += dt
+                fadeInAlpha = (1f - elapsed / FADE_IN_DURATION_S).coerceIn(0f, 1f)
+            }
+        }
+        fadeInAlpha = 0f
+        introPhase = IntroPhase.DONE
+    }
     var frameTick by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) { gameAudio.startAmbient() }
@@ -102,7 +123,8 @@ fun GameScreen() {
                 val dt = ((nowNanos - lastFrameNanos) / 1_000_000_000.0).toFloat().coerceAtMost(1f / 20f)
                 lastFrameNanos = nowNanos
                 val (dx, dy) = inputVector.value
-                engine.update(dt, dx, dy, attackRequested, paused = isInventoryOpen || !introComplete)
+                val worldFrozen = isInventoryOpen || (introPhase != IntroPhase.DONE && introPhase != IntroPhase.FADE_IN)
+                engine.update(dt, dx, dy, attackRequested, paused = worldFrozen)
                 attackRequested = false
                 for (event in engine.pendingSounds) gameAudio.play(event)
                 engine.pendingSounds.clear()
@@ -140,6 +162,8 @@ fun GameScreen() {
             val firstRow = max(0, (cameraRow - VISIBLE_TILES).toInt())
             val lastRow = min(tileMap.height - 1, (cameraRow + VISIBLE_TILES).toInt())
 
+            val waterRippleFrame = (frameTick / 8) % atlas.waterRipple.size
+
             fun sameRegion(type: TileType, row: Int, col: Int) = tileMap.tileAt(row, col) == type
 
             fun drawBlob(block: Array<Array<ImageBitmap>>, type: TileType, row: Int, col: Int, x: Float, y: Float) {
@@ -149,7 +173,12 @@ fun GameScreen() {
                     sameLeft = sameRegion(type, row, col - 1),
                     sameRight = sameRegion(type, row, col + 1),
                 )
-                drawTileImage(block[bc][br], x, y, tilePx)
+                if (type == TileType.WATER && bc == 1 && br == 1) {
+                    // Fully-surrounded open water - animate it instead of the static center tile.
+                    drawTileImage(atlas.waterRipple[waterRippleFrame], x, y, tilePx)
+                } else {
+                    drawTileImage(block[bc][br], x, y, tilePx)
+                }
             }
 
             for (row in firstRow..lastRow) {
@@ -219,6 +248,20 @@ fun GameScreen() {
                     image = atlas.torii,
                     dstOffset = IntOffset((cx - toriiWidth / 2f).roundToInt(), (bottomY - toriiHeight).roundToInt()),
                     dstSize = IntSize(toriiWidth.roundToInt(), toriiHeight.roundToInt()),
+                    filterQuality = FilterQuality.None,
+                )
+            }
+
+            for (spawn in tileMap.spawnPoints) {
+                if (spawn.marker != MarkerType.SHIPWRECK_DEBRIS) continue
+                val debrisImage = atlas.debris[(spawn.row * 31 + spawn.col) % atlas.debris.size]
+                val debrisSize = tilePx * 0.8f
+                val cx = originX + (spawn.col + 0.5f) * tilePx
+                val bottomY = originY + (spawn.row + 1) * tilePx
+                drawImage(
+                    image = debrisImage,
+                    dstOffset = IntOffset((cx - debrisSize / 2f).roundToInt(), (bottomY - debrisSize).roundToInt()),
+                    dstSize = IntSize(debrisSize.roundToInt(), debrisSize.roundToInt()),
                     filterQuality = FilterQuality.None,
                 )
             }
@@ -300,7 +343,7 @@ fun GameScreen() {
             }
         }
 
-        if (introComplete) {
+        if (introPhase == IntroPhase.DONE) {
             HeartsHud(
                 healthPoints = engine.player.health,
                 heartIcon = uiAtlas.heart,
@@ -386,7 +429,21 @@ fun GameScreen() {
             if (engine.player.isDead) {
                 DeathScreen(onRestart = { engine = GameEngine(tileMap) })
             }
-        } else {
+        } else if (introPhase == IntroPhase.FADE_IN) {
+            // World and player are already visible underneath (drawn unconditionally by the
+            // Canvas above) - this is just the black cutscene background dissolving away. HUD
+            // stays hidden until IntroPhase.DONE so it doesn't pop in mid-fade.
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = fadeInAlpha)))
+        }
+
+        if (introPhase == IntroPhase.SHIP) {
+            ShipCutscene(
+                waterFrames = atlas.waterRipple,
+                boat = cutsceneAtlas.boat,
+                onCrash = { gameAudio.playShipCrash() },
+                onFinished = { introPhase = IntroPhase.TEXT },
+            )
+        } else if (introPhase == IntroPhase.TEXT) {
             CutsceneOverlay(
                 lineIndex = cutsceneLineIndex,
                 onAdvance = {
@@ -394,9 +451,9 @@ fun GameScreen() {
                     if (cutsceneLineIndex < lines.lastIndex) {
                         cutsceneLineIndex++
                     } else {
-                        introComplete = true
                         gameAudio.stopAmbient()
                         gameAudio.startMusic()
+                        introPhase = IntroPhase.FADE_IN
                     }
                 },
             )
@@ -404,25 +461,117 @@ fun GameScreen() {
     }
 }
 
+private const val FADE_IN_DURATION_S = 1.5f
+
+private enum class IntroPhase { SHIP, TEXT, FADE_IN, DONE }
+
 /**
  * Opening scripted sequence - no HUD, no portraits, just black screen and tap-to-advance
- * narration lines (same interaction as [DialogueBox]) over the looping storm ambient. Ends by
- * revealing the world with the player already standing on the beach.
+ * narration lines (same interaction as [DialogueBox]) over the looping storm ambient. Follows
+ * [ShipCutscene], which already showed the sailing/storm/crash beats visually, so this only
+ * needs the one line that has to be heard rather than seen. Ends by fading into the world with
+ * the player already standing on the beach.
  */
 private object PrologueCutscene {
     private val linesRu = listOf(
-        "Шум моря. Где-то далеко — гром.",
         "\"Ты обещал... что больше никогда не вернёшься.\"",
-        "Корабль разбивается о скалы.",
-        "Он открывает глаза. Берег. Туман. Крики чаек.",
     )
     private val linesEn = listOf(
-        "The sound of the sea. Thunder, somewhere far off.",
         "\"You promised... you'd never come back.\"",
-        "The ship breaks apart on the rocks.",
-        "He opens his eyes. The shore. Fog. Gulls crying.",
     )
     fun lines(): List<String> = if (Locale.getDefault().language == "ru") linesRu else linesEn
+}
+
+private const val SHIP_SAIL_DURATION_S = 2.5f
+private const val SHIP_STORM_DURATION_S = 2.5f
+private const val SHIP_CRASH_FLASH_DURATION_S = 0.6f
+
+/**
+ * A short, non-interactive scene that plays before the text cutscene: the boat sails a tiled
+ * water background, a storm rolls in (screen darkens, shakes, flickers with lightning), then a
+ * crash flash cuts to black - which is also [CutsceneOverlay]'s background, so the handoff is
+ * seamless. Timing is driven by two independent effects: a per-frame loop for smooth animation
+ * (bob/shake/darken) and a delay-based one for the two one-shot triggers (crash sound, done).
+ */
+@Composable
+private fun ShipCutscene(
+    waterFrames: List<ImageBitmap>,
+    boat: ImageBitmap,
+    onCrash: () -> Unit,
+    onFinished: () -> Unit,
+) {
+    var elapsed by remember { mutableStateOf(0f) }
+    val totalDuration = SHIP_SAIL_DURATION_S + SHIP_STORM_DURATION_S + SHIP_CRASH_FLASH_DURATION_S
+
+    LaunchedEffect(Unit) {
+        var lastFrameNanos = withFrameNanos { it }
+        while (true) {
+            withFrameNanos { nowNanos ->
+                val dt = ((nowNanos - lastFrameNanos) / 1_000_000_000.0).toFloat().coerceAtMost(1f / 20f)
+                lastFrameNanos = nowNanos
+                elapsed = (elapsed + dt).coerceAtMost(totalDuration)
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        delay((SHIP_SAIL_DURATION_S * 1000).toLong())
+        delay((SHIP_STORM_DURATION_S * 1000).toLong())
+        onCrash()
+        delay((SHIP_CRASH_FLASH_DURATION_S * 1000).toLong())
+        onFinished()
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        val stormProgress = ((elapsed - SHIP_SAIL_DURATION_S) / SHIP_STORM_DURATION_S).coerceIn(0f, 1f)
+
+        val waterTileSize = size.height / 6f
+        val waterFrame = waterFrames[((elapsed * 6f).toInt()) % waterFrames.size]
+        var ty = 0f
+        while (ty < size.height) {
+            var tx = 0f
+            while (tx < size.width) {
+                drawImage(
+                    image = waterFrame,
+                    dstOffset = IntOffset(tx.roundToInt(), ty.roundToInt()),
+                    dstSize = IntSize(waterTileSize.roundToInt(), waterTileSize.roundToInt()),
+                    filterQuality = FilterQuality.None,
+                )
+                tx += waterTileSize
+            }
+            ty += waterTileSize
+        }
+
+        val shakeMagnitude = stormProgress * 14f
+        val shakeX = sin(elapsed * 37f) * shakeMagnitude
+        val shakeY = cos(elapsed * 29f) * shakeMagnitude
+        val bob = sin(elapsed * 3f) * 6f
+        val boatWidth = size.width * 0.4f
+        val boatHeight = boatWidth * (boat.height.toFloat() / boat.width.toFloat())
+        val boatCx = size.width / 2f + shakeX
+        val boatCy = size.height / 2f + bob + shakeY
+        drawImage(
+            image = boat,
+            dstOffset = IntOffset((boatCx - boatWidth / 2f).roundToInt(), (boatCy - boatHeight / 2f).roundToInt()),
+            dstSize = IntSize(boatWidth.roundToInt(), boatHeight.roundToInt()),
+            filterQuality = FilterQuality.None,
+        )
+
+        if (stormProgress > 0f) {
+            drawRect(Color(0xFF060C28).copy(alpha = stormProgress * 0.55f))
+            val lightning = sin(elapsed * 13f)
+            if (lightning > 0.96f) {
+                drawRect(Color.White.copy(alpha = (lightning - 0.96f) / 0.04f * 0.5f))
+            }
+        }
+
+        if (elapsed > SHIP_SAIL_DURATION_S + SHIP_STORM_DURATION_S) {
+            val flashT = ((elapsed - (SHIP_SAIL_DURATION_S + SHIP_STORM_DURATION_S)) / SHIP_CRASH_FLASH_DURATION_S)
+                .coerceIn(0f, 1f)
+            drawRect(Color.White.copy(alpha = (1f - flashT) * 0.9f))
+            drawRect(Color.Black.copy(alpha = flashT))
+        }
+    }
 }
 
 @Composable

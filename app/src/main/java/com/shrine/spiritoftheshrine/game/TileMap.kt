@@ -26,29 +26,36 @@ enum class MarkerType {
     POTION_PICKUP,
     KEY_PICKUP,
     TORII_LANDMARK,
+    SHIPWRECK_DEBRIS,
 }
 
 data class SpawnPoint(val marker: MarkerType, val row: Int, val col: Int)
 
 /**
- * Hand-authored 54x54 world: a 2-tile ocean ring wraps the original 50x50 island. The
- * northwest corner is the game's opening area - a sand cove where the player washes ashore,
- * a bamboo-flanked path (with an old moss-covered torii landmark) leading down to the
- * village - followed by the same forest/dungeon/temple content as before. One character =
- * one tile. See [charToTile] / [charToMarker] for the legend.
+ * Hand-authored 54x60 world: a 2-tile ocean ring wraps the island. The northwest corner is the
+ * game's opening area - a sand cove where the player washes ashore, a bamboo-flanked path (with
+ * an old moss-covered torii landmark) leading down to the village - followed by the same
+ * forest/dungeon/temple content as before, just shifted down to make room for a bigger cove and
+ * a longer path. One character = one tile. See [charToTile] / [charToMarker] for the legend.
  */
 private val RAW_MAP = """
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-~~######SSSSSSSSSS##################################~~
-~~######SSSSPSSSSS#######....#......#.....#....##..#~~
-~~######SSSSSSSSSS#######.....#..........#.........#~~
+~~###SSSSSSSSSSSSSSSS###############################~~
+~~###SSRSSSSSSRSSSSRS####....#......#.....#....##..#~~
+~~###SSSSRSSSSSSSRSSS####.....#..........#.........#~~
+~~###SSSSSSSPSSSSSSSS####..##.....##...#....#......#~~
+~~###SRSSSSSSSSSSSSSR####...#.....#...#............#~~
+~~###SSSSSSRSSSSRSSSS####......................#...#~~
+~~###SSSRSSSSSSSSSSRS####...#.#.#..................#~~
+~~###SSSSSSSSRSSSSSSS####........#...............#.#~~
+~~######MM......MM#######........#..#..............#~~
+~~######MM......MM##################################~~
+~~######MM......MM#######....#......#.....#....##..#~~
+~~######MM..O...MM#######.....#..........#.........#~~
 ~~######MM......MM#######..##.....##...#....#......#~~
 ~~######MM......MM#######...#.....#...#............#~~
-~~######MM..O...MM#######......................#...#~~
-~~######MM......MM#######...#.#.#..................#~~
-~~######MM......MM#######........#...............#.#~~
-~~######MM......MM#######........#..#..............#~~
+~~######MM......MM#######......................#...#~~
 ~~#VVVVVVVVVVVVVVVVVVVVV#.....#.###....#......#.##.#~~
 ~~#VVVVVVVVNVVVVVVVVVVVV#...#..................#..##~~
 ~~#VHHHHVVVVHHVVVVVVVVVV##..#.....#.........#.....##~~
@@ -96,7 +103,7 @@ private val RAW_MAP = """
 
 private fun charToTile(c: Char): TileType = when (c) {
     '#' -> TileType.TREE
-    'S', 'P' -> TileType.SAND
+    'S', 'P', 'R' -> TileType.SAND
     'M' -> TileType.BAMBOO
     'V', 'N', 'E' -> TileType.VILLAGE_FLOOR
     'H' -> TileType.HOUSE
@@ -120,6 +127,7 @@ private fun charToMarker(c: Char): MarkerType? = when (c) {
     'L' -> MarkerType.POTION_PICKUP
     'K' -> MarkerType.KEY_PICKUP
     'O' -> MarkerType.TORII_LANDMARK
+    'R' -> MarkerType.SHIPWRECK_DEBRIS
     else -> null
 }
 

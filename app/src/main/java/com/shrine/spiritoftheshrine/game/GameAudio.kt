@@ -28,6 +28,7 @@ class GameAudio(context: Context) {
     private val attackSoundId = loadSfx(context, "audio/sfx/Attack.wav")
     private val enemyHitSoundId = loadSfx(context, "audio/sfx/EnemyHit.wav")
     private val playerHurtSoundId = loadSfx(context, "audio/sfx/PlayerHurt.wav")
+    private val shipCrashSoundId = loadSfx(context, "audio/sfx/ShipCrash.wav")
 
     private var musicPrimed = false
     private var musicRequested = false
@@ -69,6 +70,11 @@ class GameAudio(context: Context) {
             SoundEvent.PLAYER_HURT -> playerHurtSoundId
         }
         soundPool.play(soundId, 1f, 1f, 0, 0, 1f)
+    }
+
+    /** The ship breaking apart on the rocks, at the end of the opening cutscene's storm beat. */
+    fun playShipCrash() {
+        soundPool.play(shipCrashSoundId, 1f, 1f, 0, 0, 1f)
     }
 
     /** Sea/storm loop for the opening cutscene. */

@@ -58,6 +58,9 @@ class TileAtlas(context: Context) {
     val villageFloorBlob: Array<Array<ImageBitmap>> = blobFrom(fieldSheet, originCol = 0, originRow = 0)
     val dungeonFloorBlob: Array<Array<ImageBitmap>> = blobFrom(fieldSheet, originCol = 0, originRow = 6)
     val templeFloorBlob: Array<Array<ImageBitmap>> = blobFrom(fieldSheet, originCol = 0, originRow = 12)
+    // Same sheet, a previously-unused peach-colored block - works as a sandy beach blob with
+    // the same ready-made autotile edges as the other floor types.
+    val sandBlob: Array<Array<ImageBitmap>> = blobFrom(fieldSheet, originCol = 0, originRow = 9)
     // This is one cell of a decorative pond graphic (sand ring + foam edge around open water),
     // reused here as the ocean's blob block - its "water meets land" edge art works just as
     // well for a coastline as it does for a pond shore.
@@ -74,4 +77,9 @@ class TileAtlas(context: Context) {
     // origin stays inside the bush's own silhouette - confirmed by dumping the alpha channel
     // and checking column-by-column where the neighbor's pixels actually start.
     val tree: ImageBitmap = natureSheet.cropTile(0, 0, w = 32, h = 32)
+    // A tall segmented bamboo stalk, three tiles high - blocks movement the same way TREE does.
+    val bamboo: ImageBitmap = natureSheet.cropTile(11, 8, w = 16, h = 48)
+    // Hand-drawn (not from the pack - it has no torii asset): a mossy vermilion shrine gate,
+    // the landmark on the path from the beach to the village. Non-blocking, walked under.
+    val torii: ImageBitmap = loadBitmap(context, "sprites/landmarks/Torii.png").asImageBitmap()
 }

@@ -6,10 +6,13 @@ import android.media.MediaPlayer
 import android.media.SoundPool
 
 /**
- * Background music (looped for the whole session) plus short one-shot SFX for combat events.
+ * Background music (starts once the opening cutscene ends, loops for the rest of the session),
+ * a looping ambient track for the cutscene itself, plus short one-shot SFX for combat events.
  * SoundPool handles the SFX - they're tiny local WAVs, loaded async, safe to "play" even before
- * loading finishes (SoundPool just no-ops that call). Music uses MediaPlayer with prepareAsync
- * so the ~1MB ogg doesn't block the composition that creates this.
+ * loading finishes (SoundPool just no-ops that call). Music/ambient use MediaPlayer with
+ * prepareAsync so the (larger) files don't block the composition that creates this - each
+ * tracks its own "primed" flag so a start request arriving before prepare finishes is honored
+ * as soon as it does, instead of throwing or getting silently dropped.
  */
 class GameAudio(context: Context) {
     private val soundPool = SoundPool.Builder()
@@ -26,13 +29,33 @@ class GameAudio(context: Context) {
     private val enemyHitSoundId = loadSfx(context, "audio/sfx/EnemyHit.wav")
     private val playerHurtSoundId = loadSfx(context, "audio/sfx/PlayerHurt.wav")
 
+    private var musicPrimed = false
+    private var musicRequested = false
     private val music = MediaPlayer().apply {
         val fd = context.assets.openFd("audio/music/Theme.ogg")
         setDataSource(fd.fileDescriptor, fd.startOffset, fd.length)
         fd.close()
         isLooping = true
         setVolume(0.5f, 0.5f)
-        setOnPreparedListener { it.start() }
+        setOnPreparedListener {
+            musicPrimed = true
+            if (musicRequested) it.start()
+        }
+        prepareAsync()
+    }
+
+    private var ambientPrimed = false
+    private var ambientRequested = false
+    private val ambient = MediaPlayer().apply {
+        val fd = context.assets.openFd("audio/ambient/Storm.wav")
+        setDataSource(fd.fileDescriptor, fd.startOffset, fd.length)
+        fd.close()
+        isLooping = true
+        setVolume(0.7f, 0.7f)
+        setOnPreparedListener {
+            ambientPrimed = true
+            if (ambientRequested) it.start()
+        }
         prepareAsync()
     }
 
@@ -48,18 +71,39 @@ class GameAudio(context: Context) {
         soundPool.play(soundId, 1f, 1f, 0, 0, 1f)
     }
 
-    /** Call from onPause/onStop so the music doesn't keep playing while the app is backgrounded. */
+    /** Sea/storm loop for the opening cutscene. */
+    fun startAmbient() {
+        ambientRequested = true
+        if (ambientPrimed && !ambient.isPlaying) ambient.start()
+    }
+
+    fun stopAmbient() {
+        ambientRequested = false
+        if (ambient.isPlaying) ambient.pause()
+    }
+
+    /** Starts the looping background music - called once the opening cutscene ends. */
+    fun startMusic() {
+        musicRequested = true
+        if (musicPrimed && !music.isPlaying) music.start()
+    }
+
+    /** Call from onPause/onStop so nothing keeps playing while the app is backgrounded. */
     fun pauseMusic() {
         if (music.isPlaying) music.pause()
+        if (ambient.isPlaying) ambient.pause()
     }
 
     fun resumeMusic() {
-        if (!music.isPlaying) music.start()
+        if (musicRequested && musicPrimed && !music.isPlaying) music.start()
+        if (ambientRequested && ambientPrimed && !ambient.isPlaying) ambient.start()
     }
 
     fun release() {
         soundPool.release()
         music.stop()
         music.release()
+        ambient.stop()
+        ambient.release()
     }
 }

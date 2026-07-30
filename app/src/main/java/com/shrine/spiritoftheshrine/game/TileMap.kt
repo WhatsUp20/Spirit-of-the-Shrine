@@ -3,6 +3,8 @@ package com.shrine.spiritoftheshrine.game
 enum class TileType(val walkable: Boolean) {
     GRASS(true),
     TREE(false),
+    SAND(true),
+    BAMBOO(false),
     VILLAGE_FLOOR(true),
     HOUSE(false),
     DUNGEON_FLOOR(true),
@@ -20,39 +22,43 @@ enum class MarkerType {
     SPIRIT_SPAWN,
     BOSS_SPAWN,
     NPC_SPAWN,
+    ELDER_SPAWN,
     POTION_PICKUP,
     KEY_PICKUP,
+    TORII_LANDMARK,
 }
 
 data class SpawnPoint(val marker: MarkerType, val row: Int, val col: Int)
 
 /**
- * Hand-authored 54x54 world: a 2-tile ocean ring wraps the original 50x50 island (village
- * top-left, forest connecting corridors, a small dungeon room and a temple room with a
- * locked gate). One character = one tile. See [charToTile] / [charToMarker] for the legend.
+ * Hand-authored 54x54 world: a 2-tile ocean ring wraps the original 50x50 island. The
+ * northwest corner is the game's opening area - a sand cove where the player washes ashore,
+ * a bamboo-flanked path (with an old moss-covered torii landmark) leading down to the
+ * village - followed by the same forest/dungeon/temple content as before. One character =
+ * one tile. See [charToTile] / [charToMarker] for the legend.
  */
 private val RAW_MAP = """
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-~~##################################################~~
-~~#.................#........#......#.....#....##..#~~
-~~#.VVVVVVVVVVVVVVVVVV........#..........#.........#~~
-~~#.VHHHVVVHHHVVVHHHVV.....##.....##...#....#......#~~
-~~#.VHHHVVVHHHVVVHHHVV......#.....#...#............#~~
-~~#.VVVVVVVVVVVVVVVVVV.#.......................#...#~~
-~~#.VVVVVVVVVVVVVVVVVV......#.#.#..................#~~
-~~#.VVVVVVVVVVVVVVVVVV#..........#...............#.#~~
-~~#.VVVVVVVVVVVVVVVVVV#..........#..#..............#~~
-~~#.VVHHHVVVVVVVHHHVVV........#.###....#......#.##.#~~
-~~#.VVHHHVVVVVVVHHHVVV..#...#..................#..##~~
-~~#.VVVVVVVVPVVNVVVVVV...#..#.....#.........#.....##~~
-~~#.VVVVVVVVVVVVVVVVVV.......#...#.#.#......#......#~~
-~~#.VVVVVVVVVVVVVVVVVV.......#......#...........#..#~~
-~~#......#....#............#..#..........#...#.....#~~
-~~#..#......#..##.........#.....#.........##.......#~~
-~~#.........#................#..............#......#~~
-~~#.#........#..............#..........#...#####...#~~
-~~#.#.....#.....#.#.......#.#....#................##~~
+~~######SSSSSSSSSS##################################~~
+~~######SSSSPSSSSS#######....#......#.....#....##..#~~
+~~######SSSSSSSSSS#######.....#..........#.........#~~
+~~######MM......MM#######..##.....##...#....#......#~~
+~~######MM......MM#######...#.....#...#............#~~
+~~######MM..O...MM#######......................#...#~~
+~~######MM......MM#######...#.#.#..................#~~
+~~######MM......MM#######........#...............#.#~~
+~~######MM......MM#######........#..#..............#~~
+~~#VVVVVVVVVVVVVVVVVVVVV#.....#.###....#......#.##.#~~
+~~#VVVVVVVVNVVVVVVVVVVVV#...#..................#..##~~
+~~#VHHHHVVVVHHVVVVVVVVVV##..#.....#.........#.....##~~
+~~#VHHHHVVVVHHVVVVHHHVVV#....#...#.#.#......#......#~~
+~~#VHHHHVVVVVVVVVVHHHVVV#....#......#...........#..#~~
+~~#VVEVVVNVVVVVVVVHHHVVV#..#..#..........#...#.....#~~
+~~#VVVVVVVVVVVVVVVVVVVVV#.#.....#.........##.......#~~
+~~#VVVHHVVVVVVHHHVVVNVVV#....#..............#......#~~
+~~#VVVHHVVVVVVHHHVVVVVVV#...#..........#...#####...#~~
+~~#VVVVVVVVVVVVVVVVVVVVV#.#.#....#................##~~
 ~~##....#............#D...###.........XXXXXXXXXXX..#~~
 ~~#............#............#.........DDDDDDDDDDX..#~~
 ~~#.#.......#...#....#.......#........XDDDDDDDDDX..#~~
@@ -90,7 +96,9 @@ private val RAW_MAP = """
 
 private fun charToTile(c: Char): TileType = when (c) {
     '#' -> TileType.TREE
-    'V', 'P', 'N' -> TileType.VILLAGE_FLOOR
+    'S', 'P' -> TileType.SAND
+    'M' -> TileType.BAMBOO
+    'V', 'N', 'E' -> TileType.VILLAGE_FLOOR
     'H' -> TileType.HOUSE
     'D', 'C', 's', 'q', 'K' -> TileType.DUNGEON_FLOOR
     'X' -> TileType.DUNGEON_WALL
@@ -108,8 +116,10 @@ private fun charToMarker(c: Char): MarkerType? = when (c) {
     'q' -> MarkerType.SPIRIT_SPAWN
     'B' -> MarkerType.BOSS_SPAWN
     'N' -> MarkerType.NPC_SPAWN
+    'E' -> MarkerType.ELDER_SPAWN
     'L' -> MarkerType.POTION_PICKUP
     'K' -> MarkerType.KEY_PICKUP
+    'O' -> MarkerType.TORII_LANDMARK
     else -> null
 }
 

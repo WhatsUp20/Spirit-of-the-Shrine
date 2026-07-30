@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
@@ -63,6 +65,7 @@ fun GameScreen() {
     val atlas = remember { TileAtlas(context) }
     val playerAtlas = remember { PlayerAtlas(context) }
     val enemyAtlas = remember { EnemyAtlas(context) }
+    val npcAtlas = remember { NpcAtlas(context) }
     val uiAtlas = remember { UiAtlas(context) }
     var engine by remember { mutableStateOf(GameEngine(tileMap)) }
 
@@ -165,6 +168,18 @@ fun GameScreen() {
                 drawCircle(color = markerColor, radius = tilePx * 0.3f, center = Offset(cx, cy))
             }
 
+            for (npc in engine.npcs) {
+                val npcSize = tilePx * 1.1f
+                val cx = originX + (npc.col + 0.5f) * tilePx
+                val cy = originY + (npc.row + 0.5f) * tilePx
+                drawImage(
+                    image = npcAtlas.sprite,
+                    dstOffset = IntOffset((cx - npcSize / 2f).roundToInt(), (cy - npcSize / 2f).roundToInt()),
+                    dstSize = IntSize(npcSize.roundToInt(), npcSize.roundToInt()),
+                    filterQuality = FilterQuality.None,
+                )
+            }
+
             for (enemy in engine.enemies) {
                 val enemySize = tilePx * 1.1f
                 val cx = originX + (enemy.col + 0.5f) * tilePx
@@ -229,6 +244,23 @@ fun GameScreen() {
             onTap = { attackRequested = true },
         )
 
+        if (!engine.isTalking && engine.nearbyNpc() != null) {
+            TalkButton(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 24.dp, bottom = 120.dp),
+                onTap = { engine.startDialogue() },
+            )
+        }
+
+        if (engine.isTalking) {
+            DialogueBox(
+                npcSprite = npcAtlas.sprite,
+                lineIndex = engine.dialogueLineIndex,
+                onAdvance = { engine.advanceDialogue() },
+            )
+        }
+
         if (engine.player.isDead) {
             DeathScreen(onRestart = { engine = GameEngine(tileMap) })
         }
@@ -292,6 +324,80 @@ private fun DeathScreen(onRestart: () -> Unit) {
             Spacer(modifier = Modifier.height(24.dp))
             Button(onClick = onRestart) {
                 Text(if (isRussian) "Начать заново" else "Restart")
+            }
+        }
+    }
+}
+
+@Composable
+private fun TalkButton(modifier: Modifier = Modifier, onTap: () -> Unit) {
+    val isRussian = Locale.getDefault().language == "ru"
+    val view = LocalView.current
+    Box(
+        modifier = modifier
+            .size(64.dp)
+            .excludeFromSystemGestures(view)
+            .clip(CircleShape)
+            .background(Color(0xFFE8B33D).copy(alpha = 0.85f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onTap,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = if (isRussian) "Говорить" else "Talk",
+            color = Color.Black,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun DialogueBox(npcSprite: ImageBitmap, lineIndex: Int, onAdvance: () -> Unit) {
+    val lines = NpcDialogue.lines()
+    val line = lines.getOrElse(lineIndex) { "" }
+    val isLastLine = lineIndex >= lines.lastIndex
+    val isRussian = Locale.getDefault().language == "ru"
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onAdvance,
+            ),
+    ) {
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(16.dp)
+                .background(Color.Black.copy(alpha = 0.85f))
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            androidx.compose.foundation.Image(
+                bitmap = npcSprite,
+                contentDescription = null,
+                filterQuality = FilterQuality.None,
+                modifier = Modifier.size(48.dp),
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text(text = line, color = Color.White, fontSize = 18.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = if (isLastLine) {
+                        if (isRussian) "(тап, чтобы закрыть)" else "(tap to close)"
+                    } else {
+                        if (isRussian) "(тап, чтобы продолжить)" else "(tap to continue)"
+                    },
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 12.sp,
+                )
             }
         }
     }

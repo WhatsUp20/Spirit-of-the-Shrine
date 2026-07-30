@@ -21,6 +21,7 @@ enum class MarkerType {
     BOSS_SPAWN,
     NPC_SPAWN,
     POTION_PICKUP,
+    KEY_PICKUP,
 }
 
 data class SpawnPoint(val marker: MarkerType, val row: Int, val col: Int)
@@ -49,7 +50,7 @@ private val RAW_MAP = """
 ~~#.VVVVVVVVVVVVVVVVVV.......#......#...........#..#~~
 ~~#......#....#............#..#..........#...#.....#~~
 ~~#..#......#..##.........#.....#.........##.......#~~
-~~#.........#........L.......#..............#......#~~
+~~#.........#................#..............#......#~~
 ~~#.#........#..............#..........#...#####...#~~
 ~~#.#.....#.....#.#.......#.#....#................##~~
 ~~##....#............#D...###.........XXXXXXXXXXX..#~~
@@ -59,7 +60,7 @@ private val RAW_MAP = """
 ~~#.........##.#..............#...#.#.XDDDDDDDDDX..#~~
 ~~#......#.....#......####.......#...#XDDDDDsDDDX..#~~
 ~~#....................#.....#.#.....#XDDqDDDDDDX..#~~
-~~#.....#...#..###.......#.#..#.#.....XDDDDDDDDDX..#~~
+~~#.....#...#..###.......#.#..#.#.....XDDDDDDKDDX..#~~
 ~~#........##.........#..........#....XXXXXXXXXXX.##~~
 ~~#.....#....#.#......#.#............#....#....##..#~~
 ~~#...#...#......##........#........##.#.......#...#~~
@@ -76,7 +77,7 @@ private val RAW_MAP = """
 ~~#.##.WTTTTTTTTTTTTW.......................#..#..##~~
 ~~##...WTTTTTTTTTTTTW....#..#.......##......#.....##~~
 ~~#...#WTTTTTTTTTTTTW.........#....#.#...#..#...#..#~~
-~~#....WTTTTTTTTTTTTW#.............#...............#~~
+~~#....WTTTTTTTTTTTTW#.............#.............L.#~~
 ~~#...#WTTTTTTTTTTTTW....#..................##..##.#~~
 ~~#..##WTTTTTBTTTTTTW#....#..#.#........#..........#~~
 ~~#....WTTTTTTTTTTTTW.#.........................#..#~~
@@ -91,7 +92,7 @@ private fun charToTile(c: Char): TileType = when (c) {
     '#' -> TileType.TREE
     'V', 'P', 'N' -> TileType.VILLAGE_FLOOR
     'H' -> TileType.HOUSE
-    'D', 'C', 's', 'q' -> TileType.DUNGEON_FLOOR
+    'D', 'C', 's', 'q', 'K' -> TileType.DUNGEON_FLOOR
     'X' -> TileType.DUNGEON_WALL
     'T', 'B' -> TileType.TEMPLE_FLOOR
     'W' -> TileType.TEMPLE_WALL
@@ -108,6 +109,7 @@ private fun charToMarker(c: Char): MarkerType? = when (c) {
     'B' -> MarkerType.BOSS_SPAWN
     'N' -> MarkerType.NPC_SPAWN
     'L' -> MarkerType.POTION_PICKUP
+    'K' -> MarkerType.KEY_PICKUP
     else -> null
 }
 

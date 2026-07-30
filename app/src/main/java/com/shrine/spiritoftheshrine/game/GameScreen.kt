@@ -53,11 +53,6 @@ import kotlin.math.roundToInt
 /** Tiles visible across the shorter screen dimension - sets the zoom level. */
 private const val VISIBLE_TILES = 16f
 
-private val MARKER_COLORS = mapOf(
-    MarkerType.CHEST to Color(0xFFE8B33D),
-    MarkerType.BOSS_SPAWN to Color(0xFFE83D3D),
-)
-
 @Composable
 fun GameScreen() {
     val context = LocalContext.current
@@ -140,7 +135,14 @@ fun GameScreen() {
                         TileType.WATER -> drawBlob(atlas.waterBlob, type, row, col, x, y)
                         TileType.DUNGEON_WALL -> drawTileImage(atlas.dungeonWall, x, y, tilePx)
                         TileType.TEMPLE_WALL -> drawTileImage(atlas.templeWall, x, y, tilePx)
-                        TileType.TEMPLE_GATE -> drawTileImage(atlas.templeGate, x, y, tilePx)
+                        TileType.TEMPLE_GATE -> if (engine.isGateOpen) {
+                            // Just the fully-surrounded blob cell, not a blended edge - these
+                            // three tiles sit in an isolated row so autotiling against their
+                            // still-TEMPLE_GATE neighbors would draw a seam between each of them.
+                            drawTileImage(atlas.templeFloorBlob[1][1], x, y, tilePx)
+                        } else {
+                            drawTileImage(atlas.templeGate, x, y, tilePx)
+                        }
                         TileType.HOUSE -> drawTileImage(atlas.houseWall, x, y, tilePx)
                         TileType.GRASS, TileType.TREE -> drawTileImage(atlas.grass, x, y, tilePx)
                     }
@@ -160,13 +162,6 @@ fun GameScreen() {
                         filterQuality = FilterQuality.None,
                     )
                 }
-            }
-
-            for (spawn in tileMap.spawnPoints) {
-                val markerColor = MARKER_COLORS[spawn.marker] ?: continue
-                val cx = originX + (spawn.col + 0.5f) * tilePx
-                val cy = originY + (spawn.row + 0.5f) * tilePx
-                drawCircle(color = markerColor, radius = tilePx * 0.3f, center = Offset(cx, cy))
             }
 
             for (npc in engine.npcs) {
@@ -193,8 +188,20 @@ fun GameScreen() {
                 )
             }
 
+            for (pickup in engine.keyPickups) {
+                val pickupSize = tilePx * 0.7f
+                val cx = originX + (pickup.col + 0.5f) * tilePx
+                val cy = originY + (pickup.row + 0.5f) * tilePx
+                drawImage(
+                    image = uiAtlas.key,
+                    dstOffset = IntOffset((cx - pickupSize / 2f).roundToInt(), (cy - pickupSize / 2f).roundToInt()),
+                    dstSize = IntSize(pickupSize.roundToInt(), pickupSize.roundToInt()),
+                    filterQuality = FilterQuality.None,
+                )
+            }
+
             for (enemy in engine.enemies) {
-                val enemySize = tilePx * 1.1f
+                val enemySize = if (enemy.type == EnemyType.BOSS) tilePx * 2.4f else tilePx * 1.1f
                 val cx = originX + (enemy.col + 0.5f) * tilePx
                 val cy = originY + (enemy.row + 0.5f) * tilePx
                 drawImage(
@@ -285,6 +292,15 @@ fun GameScreen() {
             )
         }
 
+        if (!engine.isTalking && !isInventoryOpen && engine.nearbyKeyPickup() != null) {
+            PickupButton(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 116.dp, bottom = 120.dp),
+                onTap = { engine.pickUpKey() },
+            )
+        }
+
         if (engine.isTalking) {
             DialogueBox(
                 npcSprite = npcAtlas.sprite,
@@ -298,6 +314,8 @@ fun GameScreen() {
                 potionIcon = uiAtlas.potion,
                 potionCount = engine.player.potionCount,
                 onUsePotion = { engine.player.usePotion() },
+                keyIcon = uiAtlas.key,
+                hasKey = engine.player.hasKey,
                 onClose = { isInventoryOpen = false },
             )
         }
@@ -448,10 +466,47 @@ private fun InventoryButton(icon: ImageBitmap, modifier: Modifier = Modifier, on
 }
 
 @Composable
+private fun InventorySlot(
+    icon: ImageBitmap,
+    label: String,
+    modifier: Modifier = Modifier,
+    onTap: (() -> Unit)? = null,
+) {
+    Box(
+        modifier = modifier
+            .size(64.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+            .background(Color.White.copy(alpha = 0.12f))
+            .let {
+                if (onTap != null) {
+                    it.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onTap,
+                    )
+                } else it
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            androidx.compose.foundation.Image(
+                bitmap = icon,
+                contentDescription = null,
+                filterQuality = FilterQuality.None,
+                modifier = Modifier.size(28.dp),
+            )
+            Text(text = label, color = Color.White, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
 private fun InventoryPanel(
     potionIcon: ImageBitmap,
     potionCount: Int,
     onUsePotion: () -> Unit,
+    keyIcon: ImageBitmap,
+    hasKey: Boolean,
     onClose: () -> Unit,
 ) {
     val isRussian = Locale.getDefault().language == "ru"
@@ -479,41 +534,30 @@ private fun InventoryPanel(
                 fontWeight = FontWeight.Bold,
             )
             Spacer(modifier = Modifier.height(16.dp))
-            if (potionCount <= 0) {
+            if (potionCount <= 0 && !hasKey) {
                 Text(
                     text = if (isRussian) "Пусто" else "Empty",
                     color = Color.White.copy(alpha = 0.6f),
                     fontSize = 14.sp,
                 )
             } else {
-                Box(
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                        .background(Color.White.copy(alpha = 0.12f))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onUsePotion,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        androidx.compose.foundation.Image(
-                            bitmap = potionIcon,
-                            contentDescription = null,
-                            filterQuality = FilterQuality.None,
-                            modifier = Modifier.size(28.dp),
-                        )
-                        Text(text = "x$potionCount", color = Color.White, fontSize = 12.sp)
+                Row {
+                    if (potionCount > 0) {
+                        InventorySlot(icon = potionIcon, label = "x$potionCount", onTap = onUsePotion)
+                    }
+                    if (hasKey) {
+                        if (potionCount > 0) Spacer(modifier = Modifier.width(12.dp))
+                        InventorySlot(icon = keyIcon, label = if (isRussian) "ключ" else "key")
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = if (isRussian) "(тап по зелью, чтобы выпить)" else "(tap the potion to drink)",
-                    color = Color.White.copy(alpha = 0.6f),
-                    fontSize = 11.sp,
-                )
+                if (potionCount > 0) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (isRussian) "(тап по зелью, чтобы выпить)" else "(tap the potion to drink)",
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 11.sp,
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(20.dp))
             Button(onClick = onClose) {

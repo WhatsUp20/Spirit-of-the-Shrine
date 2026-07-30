@@ -1,6 +1,6 @@
 package com.shrine.spiritoftheshrine.game
 
-enum class EnemyType { SLIME, SPIRIT }
+enum class EnemyType { SLIME, SPIRIT, BOSS }
 enum class EnemyBehaviorState { PATROL, CHASE, ATTACK }
 
 private const val ANIM_FPS = 3f

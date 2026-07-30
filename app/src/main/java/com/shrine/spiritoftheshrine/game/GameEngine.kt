@@ -70,9 +70,13 @@ class GameEngine(private val tileMap: TileMap) {
         Enemy(type, spawn.row + 0.5f, spawn.col + 0.5f, ENEMY_SPECS.getValue(type).maxHealth)
     }.toMutableList()
 
-    val npcs: List<Npc> = tileMap.spawnPoints
-        .filter { it.marker == MarkerType.NPC_SPAWN }
-        .map { Npc(it.row + 0.5f, it.col + 0.5f) }
+    val npcs: List<Npc> = tileMap.spawnPoints.mapNotNull { spawn ->
+        when (spawn.marker) {
+            MarkerType.NPC_SPAWN -> Npc(spawn.row + 0.5f, spawn.col + 0.5f, NpcKind.VILLAGER, VillagerDialogue.lines())
+            MarkerType.ELDER_SPAWN -> Npc(spawn.row + 0.5f, spawn.col + 0.5f, NpcKind.ELDER, ElderDialogue.lines())
+            else -> null
+        }
+    }
 
     val potionPickups: MutableList<PotionPickup> = tileMap.spawnPoints
         .filter { it.marker == MarkerType.POTION_PICKUP }
@@ -118,14 +122,19 @@ class GameEngine(private val tileMap: TileMap) {
 
     /** Shows the next line, or ends the conversation once the last line has been read. */
     fun advanceDialogue() {
-        if (dialogueNpc == null) return
-        if (dialogueLineIndex < NpcDialogue.lines().lastIndex) {
+        val npc = dialogueNpc ?: return
+        if (dialogueLineIndex < npc.dialogue.lastIndex) {
             dialogueLineIndex++
         } else {
             dialogueNpc = null
             dialogueLineIndex = 0
         }
     }
+
+    /** The line currently on screen, or null when nobody's talking. */
+    fun currentDialogueLine(): DialogueLine? = dialogueNpc?.dialogue?.getOrNull(dialogueLineIndex)
+
+    fun isLastDialogueLine(): Boolean = dialogueNpc?.let { dialogueLineIndex >= it.dialogue.lastIndex } ?: true
 
     /** Nearest potion pickup within reach of the player, or null if none is close enough. */
     fun nearbyPotionPickup(): PotionPickup? = potionPickups

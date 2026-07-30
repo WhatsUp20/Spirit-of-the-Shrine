@@ -45,6 +45,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -88,7 +89,11 @@ fun GameScreen() {
     val inputVector = remember { mutableStateOf(0f to 0f) }
     var attackRequested by remember { mutableStateOf(false) }
     var isInventoryOpen by remember { mutableStateOf(false) }
+    var introComplete by remember { mutableStateOf(false) }
+    var cutsceneLineIndex by remember { mutableStateOf(0) }
     var frameTick by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(Unit) { gameAudio.startAmbient() }
 
     LaunchedEffect(Unit) {
         var lastFrameNanos = withFrameNanos { it }
@@ -97,7 +102,7 @@ fun GameScreen() {
                 val dt = ((nowNanos - lastFrameNanos) / 1_000_000_000.0).toFloat().coerceAtMost(1f / 20f)
                 lastFrameNanos = nowNanos
                 val (dx, dy) = inputVector.value
-                engine.update(dt, dx, dy, attackRequested, paused = isInventoryOpen)
+                engine.update(dt, dx, dy, attackRequested, paused = isInventoryOpen || !introComplete)
                 attackRequested = false
                 for (event in engine.pendingSounds) gameAudio.play(event)
                 engine.pendingSounds.clear()
@@ -155,6 +160,7 @@ fun GameScreen() {
                         TileType.VILLAGE_FLOOR -> drawBlob(atlas.villageFloorBlob, type, row, col, x, y)
                         TileType.DUNGEON_FLOOR -> drawBlob(atlas.dungeonFloorBlob, type, row, col, x, y)
                         TileType.TEMPLE_FLOOR -> drawBlob(atlas.templeFloorBlob, type, row, col, x, y)
+                        TileType.SAND -> drawBlob(atlas.sandBlob, type, row, col, x, y)
                         TileType.WATER -> drawBlob(atlas.waterBlob, type, row, col, x, y)
                         TileType.DUNGEON_WALL -> drawTileImage(atlas.dungeonWall, x, y, tilePx)
                         TileType.TEMPLE_WALL -> drawTileImage(atlas.templeWall, x, y, tilePx)
@@ -167,7 +173,7 @@ fun GameScreen() {
                             drawTileImage(atlas.templeGate, x, y, tilePx)
                         }
                         TileType.HOUSE -> drawTileImage(atlas.houseWall, x, y, tilePx)
-                        TileType.GRASS, TileType.TREE -> drawTileImage(atlas.grass, x, y, tilePx)
+                        TileType.GRASS, TileType.TREE, TileType.BAMBOO -> drawTileImage(atlas.grass, x, y, tilePx)
                     }
                 }
             }
@@ -187,12 +193,42 @@ fun GameScreen() {
                 }
             }
 
+            for (row in firstRow..lastRow) {
+                for (col in firstCol..lastCol) {
+                    if (tileMap.tileAt(row, col) != TileType.BAMBOO) continue
+                    val bambooWidth = tilePx
+                    val bambooHeight = tilePx * 3f
+                    val cx = originX + (col + 0.5f) * tilePx
+                    val bottomY = originY + (row + 1) * tilePx
+                    drawImage(
+                        image = atlas.bamboo,
+                        dstOffset = IntOffset((cx - bambooWidth / 2f).roundToInt(), (bottomY - bambooHeight).roundToInt()),
+                        dstSize = IntSize(bambooWidth.roundToInt(), bambooHeight.roundToInt()),
+                        filterQuality = FilterQuality.None,
+                    )
+                }
+            }
+
+            for (spawn in tileMap.spawnPoints) {
+                if (spawn.marker != MarkerType.TORII_LANDMARK) continue
+                val toriiWidth = tilePx * 2f
+                val toriiHeight = tilePx * 2.75f
+                val cx = originX + (spawn.col + 0.5f) * tilePx
+                val bottomY = originY + (spawn.row + 1) * tilePx
+                drawImage(
+                    image = atlas.torii,
+                    dstOffset = IntOffset((cx - toriiWidth / 2f).roundToInt(), (bottomY - toriiHeight).roundToInt()),
+                    dstSize = IntSize(toriiWidth.roundToInt(), toriiHeight.roundToInt()),
+                    filterQuality = FilterQuality.None,
+                )
+            }
+
             for (npc in engine.npcs) {
                 val npcSize = tilePx * 1.1f
                 val cx = originX + (npc.col + 0.5f) * tilePx
                 val cy = originY + (npc.row + 0.5f) * tilePx
                 drawImage(
-                    image = npcAtlas.sprite,
+                    image = npcAtlas.spriteFor(npc),
                     dstOffset = IntOffset((cx - npcSize / 2f).roundToInt(), (cy - npcSize / 2f).roundToInt()),
                     dstSize = IntSize(npcSize.roundToInt(), npcSize.roundToInt()),
                     filterQuality = FilterQuality.None,
@@ -264,87 +300,165 @@ fun GameScreen() {
             }
         }
 
-        HeartsHud(
-            healthPoints = engine.player.health,
-            heartIcon = uiAtlas.heart,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(16.dp),
-        )
+        if (introComplete) {
+            HeartsHud(
+                healthPoints = engine.player.health,
+                heartIcon = uiAtlas.heart,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(16.dp),
+            )
 
-        VirtualJoystick(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(24.dp),
-            onChange = { dx, dy -> inputVector.value = dx to dy },
-        )
+            VirtualJoystick(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(24.dp),
+                onChange = { dx, dy -> inputVector.value = dx to dy },
+            )
 
-        AttackButton(
-            icon = uiAtlas.sword,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(24.dp),
-            onTap = { attackRequested = true },
-        )
-
-        if (!engine.isTalking && !isInventoryOpen && !engine.player.isDead) {
-            InventoryButton(
-                icon = uiAtlas.bag,
+            AttackButton(
+                icon = uiAtlas.sword,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 116.dp, bottom = 24.dp),
-                onTap = { isInventoryOpen = true },
+                    .padding(24.dp),
+                onTap = { attackRequested = true },
+            )
+
+            if (!engine.isTalking && !isInventoryOpen && !engine.player.isDead) {
+                InventoryButton(
+                    icon = uiAtlas.bag,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 116.dp, bottom = 24.dp),
+                    onTap = { isInventoryOpen = true },
+                )
+            }
+
+            if (!engine.isTalking && !isInventoryOpen && engine.nearbyNpc() != null) {
+                TalkButton(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 24.dp, bottom = 120.dp),
+                    onTap = { engine.startDialogue() },
+                )
+            }
+
+            if (!engine.isTalking && !isInventoryOpen && engine.nearbyPotionPickup() != null) {
+                PickupButton(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 116.dp, bottom = 120.dp),
+                    onTap = { engine.pickUpPotion() },
+                )
+            }
+
+            if (!engine.isTalking && !isInventoryOpen && engine.nearbyKeyPickup() != null) {
+                PickupButton(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 116.dp, bottom = 120.dp),
+                    onTap = { engine.pickUpKey() },
+                )
+            }
+
+            engine.currentDialogueLine()?.let { line ->
+                DialogueBox(
+                    line = line,
+                    isLastLine = engine.isLastDialogueLine(),
+                    villagerSprite = npcAtlas.villagerSprite,
+                    elderSprite = npcAtlas.elderSprite,
+                    playerSprite = playerAtlas.idle.getValue(Direction.DOWN),
+                    onAdvance = { engine.advanceDialogue() },
+                )
+            }
+
+            if (isInventoryOpen) {
+                InventoryPanel(
+                    potionIcon = uiAtlas.potion,
+                    potionCount = engine.player.potionCount,
+                    onUsePotion = { engine.player.usePotion() },
+                    keyIcon = uiAtlas.key,
+                    hasKey = engine.player.hasKey,
+                    onClose = { isInventoryOpen = false },
+                )
+            }
+
+            if (engine.player.isDead) {
+                DeathScreen(onRestart = { engine = GameEngine(tileMap) })
+            }
+        } else {
+            CutsceneOverlay(
+                lineIndex = cutsceneLineIndex,
+                onAdvance = {
+                    val lines = PrologueCutscene.lines()
+                    if (cutsceneLineIndex < lines.lastIndex) {
+                        cutsceneLineIndex++
+                    } else {
+                        introComplete = true
+                        gameAudio.stopAmbient()
+                        gameAudio.startMusic()
+                    }
+                },
             )
         }
+    }
+}
 
-        if (!engine.isTalking && !isInventoryOpen && engine.nearbyNpc() != null) {
-            TalkButton(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 24.dp, bottom = 120.dp),
-                onTap = { engine.startDialogue() },
+/**
+ * Opening scripted sequence - no HUD, no portraits, just black screen and tap-to-advance
+ * narration lines (same interaction as [DialogueBox]) over the looping storm ambient. Ends by
+ * revealing the world with the player already standing on the beach.
+ */
+private object PrologueCutscene {
+    private val linesRu = listOf(
+        "Шум моря. Где-то далеко — гром.",
+        "\"Ты обещал... что больше никогда не вернёшься.\"",
+        "Корабль разбивается о скалы.",
+        "Он открывает глаза. Берег. Туман. Крики чаек.",
+    )
+    private val linesEn = listOf(
+        "The sound of the sea. Thunder, somewhere far off.",
+        "\"You promised... you'd never come back.\"",
+        "The ship breaks apart on the rocks.",
+        "He opens his eyes. The shore. Fog. Gulls crying.",
+    )
+    fun lines(): List<String> = if (Locale.getDefault().language == "ru") linesRu else linesEn
+}
+
+@Composable
+private fun CutsceneOverlay(lineIndex: Int, onAdvance: () -> Unit) {
+    val lines = PrologueCutscene.lines()
+    val line = lines.getOrElse(lineIndex) { "" }
+    val isLastLine = lineIndex >= lines.lastIndex
+    val isRussian = Locale.getDefault().language == "ru"
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onAdvance,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+            Text(
+                text = line,
+                color = Color.White,
+                fontSize = 20.sp,
+                textAlign = TextAlign.Center,
             )
-        }
-
-        if (!engine.isTalking && !isInventoryOpen && engine.nearbyPotionPickup() != null) {
-            PickupButton(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 116.dp, bottom = 120.dp),
-                onTap = { engine.pickUpPotion() },
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = if (isLastLine) {
+                    if (isRussian) "(тап, чтобы очнуться)" else "(tap to wake)"
+                } else {
+                    if (isRussian) "(тап, чтобы продолжить)" else "(tap to continue)"
+                },
+                color = Color.White.copy(alpha = 0.5f),
+                fontSize = 12.sp,
             )
-        }
-
-        if (!engine.isTalking && !isInventoryOpen && engine.nearbyKeyPickup() != null) {
-            PickupButton(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 116.dp, bottom = 120.dp),
-                onTap = { engine.pickUpKey() },
-            )
-        }
-
-        if (engine.isTalking) {
-            DialogueBox(
-                npcSprite = npcAtlas.sprite,
-                lineIndex = engine.dialogueLineIndex,
-                onAdvance = { engine.advanceDialogue() },
-            )
-        }
-
-        if (isInventoryOpen) {
-            InventoryPanel(
-                potionIcon = uiAtlas.potion,
-                potionCount = engine.player.potionCount,
-                onUsePotion = { engine.player.usePotion() },
-                keyIcon = uiAtlas.key,
-                hasKey = engine.player.hasKey,
-                onClose = { isInventoryOpen = false },
-            )
-        }
-
-        if (engine.player.isDead) {
-            DeathScreen(onRestart = { engine = GameEngine(tileMap) })
         }
     }
 }
@@ -591,11 +705,25 @@ private fun InventoryPanel(
 }
 
 @Composable
-private fun DialogueBox(npcSprite: ImageBitmap, lineIndex: Int, onAdvance: () -> Unit) {
-    val lines = NpcDialogue.lines()
-    val line = lines.getOrElse(lineIndex) { "" }
-    val isLastLine = lineIndex >= lines.lastIndex
+private fun DialogueBox(
+    line: DialogueLine,
+    isLastLine: Boolean,
+    villagerSprite: ImageBitmap,
+    elderSprite: ImageBitmap,
+    playerSprite: ImageBitmap,
+    onAdvance: () -> Unit,
+) {
     val isRussian = Locale.getDefault().language == "ru"
+    val portrait = when (line.speaker) {
+        Speaker.VILLAGER -> villagerSprite
+        Speaker.ELDER -> elderSprite
+        Speaker.PLAYER -> playerSprite
+    }
+    val speakerLabel = when (line.speaker) {
+        Speaker.VILLAGER -> null
+        Speaker.ELDER -> if (isRussian) "Старейшина" else "Elder"
+        Speaker.PLAYER -> if (isRussian) "Ты" else "You"
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -615,14 +743,18 @@ private fun DialogueBox(npcSprite: ImageBitmap, lineIndex: Int, onAdvance: () ->
             verticalAlignment = Alignment.CenterVertically,
         ) {
             androidx.compose.foundation.Image(
-                bitmap = npcSprite,
+                bitmap = portrait,
                 contentDescription = null,
                 filterQuality = FilterQuality.None,
                 modifier = Modifier.size(48.dp),
             )
             Spacer(modifier = Modifier.width(16.dp))
             Column {
-                Text(text = line, color = Color.White, fontSize = 18.sp)
+                if (speakerLabel != null) {
+                    Text(text = speakerLabel, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+                Text(text = line.text(), color = Color.White, fontSize = 18.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = if (isLastLine) {

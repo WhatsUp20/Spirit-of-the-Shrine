@@ -3,7 +3,6 @@ package com.shrine.spiritoftheshrine.game
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 
@@ -15,17 +14,15 @@ private fun loadBitmap(context: Context, assetPath: String): Bitmap =
 private fun Bitmap.cropTile(col: Int, row: Int): Bitmap =
     Bitmap.createBitmap(this, col * TILE, row * TILE, TILE, TILE)
 
-private fun Bitmap.flippedHorizontally(): Bitmap {
-    val matrix = Matrix().apply { preScale(-1f, 1f) }
-    return Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
-}
-
 /**
- * Slices the Knight "SeparateAnim" sheets. Idle.png is 4 columns = Down/Up/Left/Right, one
- * frame each - all four directions are drawn distinctly there. Walk.png only has unique art
- * for Down (row 0) and Left (row 1); rows 2-3 turned out to be exact duplicates when compared
- * pixel-for-pixel. So Right-walk is Left-walk mirrored here, and Up-walk reuses Down-walk -
- * a deliberate simplification flagged to the user rather than something we quietly do.
+ * Slices the Knight "SeparateAnim" sheets. Idle.png and Attack.png are 4 columns =
+ * Down/Up/Left/Right, one frame each. Walk.png is a 4x4 grid where the COLUMN is the
+ * direction (same Down/Up/Left/Right order as Idle.png - row 0 is pixel-identical to
+ * Idle.png's 4 frames, confirmed by diff) and the ROW is the animation frame - not the
+ * other way around. Reading it as "row = direction, column = frame" (the original bug
+ * here) pulled one frame each of Down/Up/Left/Right into what was meant to be a single
+ * direction's walk cycle, which is why the character looked like it was spinning in
+ * place while moving.
  */
 class PlayerAtlas(context: Context) {
     val idle: Map<Direction, ImageBitmap>
@@ -44,15 +41,11 @@ class PlayerAtlas(context: Context) {
             Direction.RIGHT to idleSheet.cropTile(3, 0).asImageBitmap(),
         )
 
-        val downWalk = (0 until 4).map { walkSheet.cropTile(it, 0) }
-        val leftWalk = (0 until 4).map { walkSheet.cropTile(it, 1) }
-        val rightWalk = leftWalk.map { it.flippedHorizontally() }
-
         walk = mapOf(
-            Direction.DOWN to downWalk.map { it.asImageBitmap() },
-            Direction.UP to downWalk.map { it.asImageBitmap() },
-            Direction.LEFT to leftWalk.map { it.asImageBitmap() },
-            Direction.RIGHT to rightWalk.map { it.asImageBitmap() },
+            Direction.DOWN to (0 until 4).map { walkSheet.cropTile(0, it).asImageBitmap() },
+            Direction.UP to (0 until 4).map { walkSheet.cropTile(1, it).asImageBitmap() },
+            Direction.LEFT to (0 until 4).map { walkSheet.cropTile(2, it).asImageBitmap() },
+            Direction.RIGHT to (0 until 4).map { walkSheet.cropTile(3, it).asImageBitmap() },
         )
 
         // Attack.png follows the same 4-column layout as Idle.png (Down/Up/Left/Right), all real art.

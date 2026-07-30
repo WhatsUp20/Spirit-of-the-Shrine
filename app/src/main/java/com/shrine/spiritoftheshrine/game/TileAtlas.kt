@@ -67,5 +67,11 @@ class TileAtlas(context: Context) {
     val templeWall: ImageBitmap = reliefSheet.cropTile(5, 6)
     val houseWall: ImageBitmap = houseSheet.cropTile(0, 3)
     val templeGate: ImageBitmap = houseSheet.cropTile(9, 3)
-    val tree: ImageBitmap = natureSheet.cropTile(0, 0, w = 48, h = 48)
+    // TilesetNature.png's icons aren't laid out on a clean non-overlapping grid - adjacent
+    // trees' bounding boxes overlap each other, so a naive 48x48 grid-cell crop pulled in a
+    // sliver of the neighboring pine tree along with the intended bush (that stray wedge is
+    // what read as a "cropped fir tree" glued onto every tree on the map). 32x32 from the same
+    // origin stays inside the bush's own silhouette - confirmed by dumping the alpha channel
+    // and checking column-by-column where the neighbor's pixels actually start.
+    val tree: ImageBitmap = natureSheet.cropTile(0, 0, w = 32, h = 32)
 }

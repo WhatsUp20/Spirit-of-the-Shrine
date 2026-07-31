@@ -64,7 +64,10 @@ private const val VISIBLE_TILES = 16f
 @Composable
 fun GameScreen() {
     val context = LocalContext.current
-    val tileMap = remember { TileMap.load() }
+    // Two standalone maps, not one continuous world: the player starts on the beach and steps
+    // through its LOCATION_EXIT onto the village map (see the transition check in the game-loop
+    // LaunchedEffect below). There's currently no exit back the other way.
+    var tileMap by remember { mutableStateOf(TileMap.loadBeach()) }
     val atlas = remember { TileAtlas(context) }
     val playerAtlas = remember { PlayerAtlas(context) }
     val enemyAtlas = remember { EnemyAtlas(context) }
@@ -110,6 +113,12 @@ fun GameScreen() {
             }
         }
         fadeInAlpha = 0f
+        introPhase = IntroPhase.SITTING
+    }
+
+    LaunchedEffect(introPhase) {
+        if (introPhase != IntroPhase.SITTING) return@LaunchedEffect
+        delay((SITTING_DURATION_S * 1000).toLong())
         introPhase = IntroPhase.DONE
     }
     var frameTick by remember { mutableIntStateOf(0) }
@@ -123,11 +132,25 @@ fun GameScreen() {
                 val dt = ((nowNanos - lastFrameNanos) / 1_000_000_000.0).toFloat().coerceAtMost(1f / 20f)
                 lastFrameNanos = nowNanos
                 val (dx, dy) = inputVector.value
-                val worldFrozen = isInventoryOpen || (introPhase != IntroPhase.DONE && introPhase != IntroPhase.FADE_IN)
+                val worldFrozen = isInventoryOpen || introPhase != IntroPhase.DONE
                 engine.update(dt, dx, dy, attackRequested, paused = worldFrozen)
                 attackRequested = false
                 for (event in engine.pendingSounds) gameAudio.play(event)
                 engine.pendingSounds.clear()
+                if (!worldFrozen && engine.reachedExitToVillage()) {
+                    val nextMap = TileMap.loadVillage()
+                    val carryOver = engine.player
+                    tileMap = nextMap
+                    engine = GameEngine(nextMap, carryOver)
+                    gameAudio.startMusic()
+                } else if (!worldFrozen && engine.reachedExitToBeach()) {
+                    val nextMap = TileMap.loadBeach()
+                    val carryOver = engine.player
+                    tileMap = nextMap
+                    engine = GameEngine(nextMap, carryOver, spawnMarker = MarkerType.BEACH_RETURN_SPAWN)
+                    // Music keeps playing once it's started - only the beach's very first visit
+                    // (before the village is ever reached) is silent.
+                }
                 frameTick++
             }
         }
@@ -202,7 +225,7 @@ fun GameScreen() {
                             drawTileImage(atlas.templeGate, x, y, tilePx)
                         }
                         TileType.HOUSE -> drawTileImage(atlas.houseWall, x, y, tilePx)
-                        TileType.GRASS, TileType.TREE, TileType.BAMBOO -> drawTileImage(atlas.grass, x, y, tilePx)
+                        TileType.GRASS, TileType.TREE, TileType.PALM, TileType.BAMBOO -> drawTileImage(atlas.grass, x, y, tilePx)
                     }
                 }
             }
@@ -217,6 +240,21 @@ fun GameScreen() {
                         image = atlas.tree,
                         dstOffset = IntOffset((cx - treeSize / 2f).roundToInt(), (bottomY - treeSize).roundToInt()),
                         dstSize = IntSize(treeSize.roundToInt(), treeSize.roundToInt()),
+                        filterQuality = FilterQuality.None,
+                    )
+                }
+            }
+
+            for (row in firstRow..lastRow) {
+                for (col in firstCol..lastCol) {
+                    if (tileMap.tileAt(row, col) != TileType.PALM) continue
+                    val palmSize = tilePx * 1.6f
+                    val cx = originX + (col + 0.5f) * tilePx
+                    val bottomY = originY + (row + 1) * tilePx
+                    drawImage(
+                        image = atlas.palm,
+                        dstOffset = IntOffset((cx - palmSize / 2f).roundToInt(), (bottomY - palmSize).roundToInt()),
+                        dstSize = IntSize(palmSize.roundToInt(), palmSize.roundToInt()),
                         filterQuality = FilterQuality.None,
                     )
                 }
@@ -317,9 +355,9 @@ fun GameScreen() {
                 }
             }
 
-            // Sword hitbox: drawn as a visible translucent rectangle so it can be checked
-            // by eye for now - M3's enemies will be the ones that actually read this box.
-            engine.attackHitbox()?.let { box ->
+            // Only drawn for a brief moment right when the punch actually connects with an
+            // enemy - not for the whole swing (attackHitbox() is still used for collision).
+            engine.activeHitFlash()?.let { box ->
                 drawRect(
                     color = Color(0x99FF3B30),
                     topLeft = Offset(originX + box.colMin * tilePx, originY + box.rowMin * tilePx),
@@ -331,15 +369,35 @@ fun GameScreen() {
             }
 
             if (!engine.player.isFlashHidden) {
-                val playerSize = tilePx * 1.3f
                 val playerCx = originX + engine.player.col * tilePx
-                val playerBottomY = originY + (engine.player.row + 0.5f) * tilePx
-                drawImage(
-                    image = playerAtlas.frameFor(engine.player),
-                    dstOffset = IntOffset((playerCx - playerSize / 2f).roundToInt(), (playerBottomY - playerSize).roundToInt()),
-                    dstSize = IntSize(playerSize.roundToInt(), playerSize.roundToInt()),
-                    filterQuality = FilterQuality.None,
-                )
+                if (introPhase == IntroPhase.FADE_IN || introPhase == IntroPhase.SITTING) {
+                    // Washed ashore, not standing yet - a wider, center-anchored pose instead of
+                    // the normal bottom-anchored standing sprite. Lying during the fade-in reveal,
+                    // then sitting up as the following beat, before a normal idle frame takes over.
+                    val wakeImage = if (introPhase == IntroPhase.FADE_IN) playerAtlas.lyingDown else playerAtlas.sittingUp
+                    val wakeWidth = tilePx * 2.1f
+                    val wakeHeight = wakeWidth * (wakeImage.height.toFloat() / wakeImage.width.toFloat())
+                    val playerCy = originY + (engine.player.row + 0.5f) * tilePx
+                    drawImage(
+                        image = wakeImage,
+                        dstOffset = IntOffset((playerCx - wakeWidth / 2f).roundToInt(), (playerCy - wakeHeight / 2f).roundToInt()),
+                        dstSize = IntSize(wakeWidth.roundToInt(), wakeHeight.roundToInt()),
+                        filterQuality = FilterQuality.None,
+                    )
+                } else {
+                    // Full-body custom art, not the pack's square bust sprites - size by height
+                    // and derive width from each pose's own aspect ratio instead of assuming square.
+                    val frame = playerAtlas.frameFor(engine.player)
+                    val playerHeight = tilePx * 1.5f
+                    val playerWidth = playerHeight * (frame.width.toFloat() / frame.height.toFloat())
+                    val playerBottomY = originY + (engine.player.row + 0.5f) * tilePx
+                    drawImage(
+                        image = frame,
+                        dstOffset = IntOffset((playerCx - playerWidth / 2f).roundToInt(), (playerBottomY - playerHeight).roundToInt()),
+                        dstSize = IntSize(playerWidth.roundToInt(), playerHeight.roundToInt()),
+                        filterQuality = FilterQuality.None,
+                    )
+                }
             }
         }
 
@@ -360,7 +418,7 @@ fun GameScreen() {
             )
 
             AttackButton(
-                icon = uiAtlas.sword,
+                icon = uiAtlas.fist,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(24.dp),
@@ -440,6 +498,7 @@ fun GameScreen() {
             ShipCutscene(
                 waterFrames = atlas.waterRipple,
                 boat = cutsceneAtlas.boat,
+                onStormStart = { gameAudio.playThunder() },
                 onCrash = { gameAudio.playShipCrash() },
                 onFinished = { introPhase = IntroPhase.TEXT },
             )
@@ -451,8 +510,8 @@ fun GameScreen() {
                     if (cutsceneLineIndex < lines.lastIndex) {
                         cutsceneLineIndex++
                     } else {
+                        // No music on the beach - it only starts once the village exit is reached.
                         gameAudio.stopAmbient()
-                        gameAudio.startMusic()
                         introPhase = IntroPhase.FADE_IN
                     }
                 },
@@ -462,8 +521,9 @@ fun GameScreen() {
 }
 
 private const val FADE_IN_DURATION_S = 1.5f
+private const val SITTING_DURATION_S = 1.6f
 
-private enum class IntroPhase { SHIP, TEXT, FADE_IN, DONE }
+private enum class IntroPhase { SHIP, TEXT, FADE_IN, SITTING, DONE }
 
 /**
  * Opening scripted sequence - no HUD, no portraits, just black screen and tap-to-advance
@@ -497,6 +557,7 @@ private const val SHIP_CRASH_FLASH_DURATION_S = 0.6f
 private fun ShipCutscene(
     waterFrames: List<ImageBitmap>,
     boat: ImageBitmap,
+    onStormStart: () -> Unit,
     onCrash: () -> Unit,
     onFinished: () -> Unit,
 ) {
@@ -516,6 +577,7 @@ private fun ShipCutscene(
 
     LaunchedEffect(Unit) {
         delay((SHIP_SAIL_DURATION_S * 1000).toLong())
+        onStormStart()
         delay((SHIP_STORM_DURATION_S * 1000).toLong())
         onCrash()
         delay((SHIP_CRASH_FLASH_DURATION_S * 1000).toLong())

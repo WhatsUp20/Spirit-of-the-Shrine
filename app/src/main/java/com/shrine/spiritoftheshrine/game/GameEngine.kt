@@ -10,10 +10,12 @@ private const val PLAYER_SPEED_TILES_PER_SEC = 4.5f
 private const val PLAYER_HALF_SIZE = 0.3f
 private const val ATTACK_REACH = 0.65f
 private const val ATTACK_HALF_SIZE = 0.45f
+private const val HIT_FLASH_DURATION = 0.12f
 private const val NPC_INTERACT_RADIUS = 1.3f
 private const val POTION_PICKUP_RADIUS = 0.8f
 private const val KEY_PICKUP_RADIUS = 0.8f
 private const val GATE_UNLOCK_RADIUS = 1.5f
+private const val LOCATION_EXIT_RADIUS = 0.6f
 
 data class TileRect(val rowMin: Float, val rowMax: Float, val colMin: Float, val colMax: Float)
 
@@ -54,10 +56,19 @@ private val ENEMY_SPECS = mapOf(
     ),
 )
 
-class GameEngine(private val tileMap: TileMap) {
+/** [carryOver], when given, is the Player from the map the caller just left - a location
+ * transition spawns a fresh Player at [spawnMarker] but keeps their health/potions/key rather
+ * than resetting the run. [spawnMarker] defaults to the map's one-time PLAYER_SPAWN; passing
+ * BEACH_RETURN_SPAWN instead is how walking back from the village re-enters the beach map at
+ * the path's mouth rather than back at the shipwreck. */
+class GameEngine(
+    private val tileMap: TileMap,
+    carryOver: Player? = null,
+    spawnMarker: MarkerType = MarkerType.PLAYER_SPAWN,
+) {
     val player: Player = run {
-        val spawn = tileMap.spawnPoints.first { it.marker == MarkerType.PLAYER_SPAWN }
-        Player(spawn.row + 0.5f, spawn.col + 0.5f)
+        val spawn = tileMap.spawnPoints.first { it.marker == spawnMarker }
+        Player(spawn.row + 0.5f, spawn.col + 0.5f).also { p -> carryOver?.let { p.restoreFrom(it) } }
     }
 
     val enemies: MutableList<Enemy> = tileMap.spawnPoints.mapNotNull { spawn ->
@@ -73,6 +84,7 @@ class GameEngine(private val tileMap: TileMap) {
     val npcs: List<Npc> = tileMap.spawnPoints.mapNotNull { spawn ->
         when (spawn.marker) {
             MarkerType.NPC_SPAWN -> Npc(spawn.row + 0.5f, spawn.col + 0.5f, NpcKind.VILLAGER, VillagerDialogue.lines())
+            MarkerType.NPC_WARNING_SPAWN -> Npc(spawn.row + 0.5f, spawn.col + 0.5f, NpcKind.VILLAGER, WarningVillagerDialogue.lines())
             MarkerType.ELDER_SPAWN -> Npc(spawn.row + 0.5f, spawn.col + 0.5f, NpcKind.ELDER, ElderDialogue.lines())
             else -> null
         }
@@ -88,6 +100,18 @@ class GameEngine(private val tileMap: TileMap) {
         .map { KeyPickup(it.row + 0.5f, it.col + 0.5f) }
         .toMutableList()
 
+    /** True once the player steps onto the given exit trigger, if this map has one - the caller
+     * (GameScreen) reacts by loading the other map and re-spawning the player there. A map only
+     * ever has one of these two markers, so calling the "wrong" one for the current map is safe
+     * and just always returns false. */
+    private fun reachedExit(marker: MarkerType): Boolean {
+        val exit = tileMap.spawnPoints.firstOrNull { it.marker == marker } ?: return false
+        return hypot(player.row - (exit.row + 0.5f), player.col - (exit.col + 0.5f)) <= LOCATION_EXIT_RADIUS
+    }
+
+    fun reachedExitToVillage(): Boolean = reachedExit(MarkerType.EXIT_TO_VILLAGE)
+    fun reachedExitToBeach(): Boolean = reachedExit(MarkerType.EXIT_TO_BEACH)
+
     /** Every TEMPLE_GATE tile, scanned once - the gate unlocks when the player reaches any of them with the key. */
     private val gateTiles: List<Pair<Int, Int>> = (0 until tileMap.height).flatMap { row ->
         (0 until tileMap.width).mapNotNull { col ->
@@ -97,6 +121,9 @@ class GameEngine(private val tileMap: TileMap) {
 
     var isGateOpen: Boolean = false
         private set
+
+    private var hitFlashTimer: Float = 0f
+    private var hitFlashBox: TileRect? = null
 
     /** Sound effects triggered this frame - the caller drains and plays these, then clears the
      * list. Kept here rather than in GameScreen so the "did a hit actually land" logic (which
@@ -192,11 +219,22 @@ class GameEngine(private val tileMap: TileMap) {
             updateEnemyAI(enemy, dt)
             val enemyHalfSize = ENEMY_SPECS.getValue(enemy.type).halfSize
             if (hitbox != null && rectOverlapsBox(hitbox, enemy.row, enemy.col, enemyHalfSize)) {
-                if (enemy.takeDamage(1, player.attackSeq)) pendingSounds.add(SoundEvent.ENEMY_HIT)
+                if (enemy.takeDamage(1, player.attackSeq)) {
+                    pendingSounds.add(SoundEvent.ENEMY_HIT)
+                    hitFlashTimer = HIT_FLASH_DURATION
+                    hitFlashBox = hitbox
+                }
             }
         }
         enemies.removeAll { it.isDead }
+
+        if (hitFlashTimer > 0f) hitFlashTimer = (hitFlashTimer - dt).coerceAtLeast(0f)
     }
+
+    /** Tile-space rectangle to render the hit-flash in, or null outside the brief window right
+     * after the sword actually connected - unlike [attackHitbox] this is NOT shown for the whole
+     * swing, only when a hit landed. */
+    fun activeHitFlash(): TileRect? = if (hitFlashTimer > 0f) hitFlashBox else null
 
     /** Tile-space rectangle of the active sword hitbox, or null when not attacking. */
     fun attackHitbox(): TileRect? {

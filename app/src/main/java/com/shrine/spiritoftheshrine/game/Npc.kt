@@ -23,6 +23,20 @@ object VillagerDialogue {
     )
 }
 
+/** One villager (the rightmost one in the village) keeps the original warning about the
+ * temple instead of the generic "welcome home" flavor lines. */
+object WarningVillagerDialogue {
+    fun lines(): List<DialogueLine> = listOf(
+        DialogueLine(Speaker.VILLAGER, "Добро пожаловать в нашу деревню, путник.", "Welcome to our village, traveler."),
+        DialogueLine(
+            Speaker.VILLAGER,
+            "Слышал, храм на юге охраняет злой дух...",
+            "I've heard the temple to the south is guarded by an evil spirit...",
+        ),
+        DialogueLine(Speaker.VILLAGER, "Будь осторожен, если пойдёшь туда.", "Be careful if you go there."),
+    )
+}
+
 /** The prologue's big reveal - the player's own lines are narrated the same way, alternating
  * speaker with the elder. */
 object ElderDialogue {

@@ -11,3 +11,11 @@ build/
 # Raw asset pack (94MB+ zip contents) - only the specific sliced PNGs actually
 # used by the app live under app/src/main/assets/, those are committed normally.
 /assets_raw/
+/Ninja Adventure - Asset Pack.zip
+
+# Reference material (icon/character source images from ChatGPT etc.) - only the
+# processed/cropped sprites that ship in app/src/main/assets/ are committed.
+/reference/
+
+# Debug APK dropped here for the user to install on their phone.
+/spirit-of-the-shrine-debug.apk

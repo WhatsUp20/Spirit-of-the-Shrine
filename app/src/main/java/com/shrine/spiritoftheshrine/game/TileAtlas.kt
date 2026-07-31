@@ -87,6 +87,9 @@ class TileAtlas(context: Context) {
     // Hand-drawn (not from the pack - it has no torii asset): a mossy vermilion shrine gate,
     // the landmark on the path from the beach to the village. Non-blocking, walked under.
     val torii: ImageBitmap = loadBitmap(context, "sprites/landmarks/Torii.png").asImageBitmap()
+    // Hand-drawn (the pack has no palm either) - blocks movement the same way TREE does, used
+    // on the beach map for the "water and palms" look instead of the pack's temperate tree.
+    val palm: ImageBitmap = loadBitmap(context, "sprites/landmarks/Palm.png").asImageBitmap()
     // Shipwreck debris scattered on the beach - a real crate from the pack plus two hand-drawn
     // pieces (plank, barrel) for variety. Picked per-marker by position so it stays deterministic.
     val debris: List<ImageBitmap> = listOf(

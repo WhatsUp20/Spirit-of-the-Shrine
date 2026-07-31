@@ -38,6 +38,8 @@ class Player(startRow: Float, startCol: Float) {
 
     val walkFrame: Int get() = (animTime * WALK_FPS).toInt() % 4
     val isAttacking: Boolean get() = attackTimer > 0f
+    /** 0 at the start of a swing, approaching 1 as it finishes - picks between the two attack frames. */
+    val attackProgress: Float get() = if (attackTimer <= 0f) 0f else 1f - (attackTimer / ATTACK_DURATION)
     val isInvulnerable: Boolean get() = invulnTimer > 0f
     /** Toggles a few times a second while invulnerable, for a hit-flash blink effect. */
     val isFlashHidden: Boolean get() = isInvulnerable && (invulnTimer * 10).toInt() % 2 == 0
@@ -88,6 +90,14 @@ class Player(startRow: Float, startCol: Float) {
 
     fun consumeKey() {
         hasKey = false
+    }
+
+    /** Carries stats over to a freshly spawned Player when the world switches to a different
+     * map - a location transition shouldn't heal the player or forget their potions/key. */
+    fun restoreFrom(other: Player) {
+        health = other.health
+        potionCount = other.potionCount
+        hasKey = other.hasKey
     }
 
     /** Heals for half of max health. No-ops (keeps the potion) if already at full health. */

@@ -7,7 +7,8 @@ import android.media.SoundPool
 
 /**
  * Background music (starts once the opening cutscene ends, loops for the rest of the session),
- * a looping ambient track for the cutscene itself, plus short one-shot SFX for combat events.
+ * two looping ambient tracks layered for the cutscene itself (storm + sea waves), plus short
+ * one-shot SFX for combat events and cutscene beats (thunder, ship crash).
  * SoundPool handles the SFX - they're tiny local WAVs, loaded async, safe to "play" even before
  * loading finishes (SoundPool just no-ops that call). Music/ambient use MediaPlayer with
  * prepareAsync so the (larger) files don't block the composition that creates this - each
@@ -29,6 +30,7 @@ class GameAudio(context: Context) {
     private val enemyHitSoundId = loadSfx(context, "audio/sfx/EnemyHit.wav")
     private val playerHurtSoundId = loadSfx(context, "audio/sfx/PlayerHurt.wav")
     private val shipCrashSoundId = loadSfx(context, "audio/sfx/ShipCrash.wav")
+    private val thunderSoundId = loadSfx(context, "audio/sfx/Thunder.wav")
 
     private var musicPrimed = false
     private var musicRequested = false
@@ -60,6 +62,23 @@ class GameAudio(context: Context) {
         prepareAsync()
     }
 
+    // A second, independent ambient loop layered under the storm - same primed/requested
+    // start pattern as `ambient` above, just a distinct sea-wave texture instead of thunder/rain.
+    private var waveAmbientPrimed = false
+    private var waveAmbientRequested = false
+    private val waveAmbient = MediaPlayer().apply {
+        val fd = context.assets.openFd("audio/ambient/Wave.wav")
+        setDataSource(fd.fileDescriptor, fd.startOffset, fd.length)
+        fd.close()
+        isLooping = true
+        setVolume(0.5f, 0.5f)
+        setOnPreparedListener {
+            waveAmbientPrimed = true
+            if (waveAmbientRequested) it.start()
+        }
+        prepareAsync()
+    }
+
     private fun loadSfx(context: Context, assetPath: String): Int =
         context.assets.openFd(assetPath).use { soundPool.load(it, 1) }
 
@@ -77,18 +96,29 @@ class GameAudio(context: Context) {
         soundPool.play(shipCrashSoundId, 1f, 1f, 0, 0, 1f)
     }
 
+    /** A single thunderclap, played once as the storm rolls in and the screen starts darkening. */
+    fun playThunder() {
+        soundPool.play(thunderSoundId, 1f, 1f, 0, 0, 1f)
+    }
+
     /** Sea/storm loop for the opening cutscene. */
     fun startAmbient() {
         ambientRequested = true
+        waveAmbientRequested = true
         if (ambientPrimed && !ambient.isPlaying) ambient.start()
+        if (waveAmbientPrimed && !waveAmbient.isPlaying) waveAmbient.start()
     }
 
     fun stopAmbient() {
         ambientRequested = false
+        waveAmbientRequested = false
         if (ambient.isPlaying) ambient.pause()
+        if (waveAmbient.isPlaying) waveAmbient.pause()
     }
 
-    /** Starts the looping background music - called once the opening cutscene ends. */
+    /** Starts the looping background music - called on first arrival at the village (there's
+     * deliberately no music on the beach until then). Once started it just keeps playing,
+     * including on later trips back to the beach. */
     fun startMusic() {
         musicRequested = true
         if (musicPrimed && !music.isPlaying) music.start()
@@ -98,11 +128,13 @@ class GameAudio(context: Context) {
     fun pauseMusic() {
         if (music.isPlaying) music.pause()
         if (ambient.isPlaying) ambient.pause()
+        if (waveAmbient.isPlaying) waveAmbient.pause()
     }
 
     fun resumeMusic() {
         if (musicRequested && musicPrimed && !music.isPlaying) music.start()
         if (ambientRequested && ambientPrimed && !ambient.isPlaying) ambient.start()
+        if (waveAmbientRequested && waveAmbientPrimed && !waveAmbient.isPlaying) waveAmbient.start()
     }
 
     fun release() {
@@ -111,5 +143,7 @@ class GameAudio(context: Context) {
         music.release()
         ambient.stop()
         ambient.release()
+        waveAmbient.stop()
+        waveAmbient.release()
     }
 }
